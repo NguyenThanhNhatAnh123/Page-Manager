@@ -5,7 +5,7 @@
     "scope": "token reel scheduler, assets, inputs, graph, connection revisions"
   },
   "v2_worker_tests": {
-    "passed": 26,
+    "passed": 27,
     "engine": "PostgreSQL 18 in Linux CI; earlier local checks used PGlite development socket",
     "includes": [
       "20 isolated namespaces",
@@ -24,7 +24,8 @@
       "uncertain publish only verifies without a second finish",
       "Twenty owner uploads and operation UUID isolation",
       "Owner-only metrics, history and events over HTTP/MCP",
-      "Private worker rejects forged or malformed owner authentication"
+      "Private worker rejects forged or malformed owner authentication",
+      "Current System User source groups, overlap, search, removed Pages, pagination and matching MCP isolation"
     ]
   },
   "frontend": {
@@ -116,7 +117,15 @@
         "pages-grid-lime-dark.jpg",
         "pages-grid-lime-mobile.jpg"
       ],
-      "console_errors": 0
+      "console_errors": 0,
+      "system_user_groups": {
+        "result": "passed",
+        "report": "system-user-groups.json",
+        "responsive_widths_checked": [
+          390,
+          1920
+        ]
+      }
     },
     "session_isolation": {
       "tests": 6,
@@ -196,10 +205,10 @@
     "client_instructions": "examples/agent-publication-instructions.md"
   },
   "linux_ci": {
-    "commit": "3bc2753d79d547376b0fc491c8719e94153ea1ad",
-    "url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44036907711",
+    "commit": "23350dd39d1059a9ad133727527bd12be76737e2",
+    "url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44042796773",
     "conclusion": "success",
-    "worker_tests": 26,
+    "worker_tests": 27,
     "gateway_tests": 6,
     "postgres_version": 18,
     "rust_version": "1.90.0",
@@ -212,7 +221,7 @@
   },
   "live_deployment": {
     "hosting": "GitHub Codespaces",
-    "source_commit": "3bc2753d79d547376b0fc491c8719e94153ea1ad",
+    "source_commit": "23350dd39d1059a9ad133727527bd12be76737e2",
     "local_url": "http://127.0.0.1:8020",
     "port_visibility": "private",
     "machine": "2 CPU, 8 GB RAM, 32 GB disk",
@@ -238,7 +247,8 @@
     "report": "mcp-clients-live.json",
     "admin_meta_report": "admin-meta-login-live.json",
     "web_session_days": 30,
-    "multi_user_report": "multi-user-isolation.json"
+    "multi_user_report": "multi-user-isolation.json",
+    "system_user_groups_report": "system-user-groups.json"
   },
   "multi_user_isolation": {
     "test_accounts": 20,

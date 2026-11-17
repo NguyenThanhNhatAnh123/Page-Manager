@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-17",
+  "source_commit": "23350dd39d1059a9ad133727527bd12be76737e2",
+  "feature": "Pages grouped by current System User connection with server pagination",
+  "behavior": [
+    "All System Users or one selected source",
+    "Current source labels on cards are clickable",
+    "Source changes reset offset and preserve search and page size",
+    "Page shared by sources belongs to each group and appears once in all Pages",
+    "Removed-page filter composes with the source filter",
+    "Inactive links and disconnected sources excluded from current groups",
+    "HTTP and MCP have matching owner-scoped grouping",
+    "Legacy history filtering remains unchanged"
+  ],
+  "ui_fixture": {
+    "fixture_only": true,
+    "total_unique_pages": 43,
+    "source_counts": [
+      11,
+      33
+    ],
+    "shared_pages": 1,
+    "beta_page_two": "13â€“24 / 33",
+    "beta_page_24_last": "25â€“33 / 33",
+    "last_page_cards": 9,
+    "source_change_resets_offset": true,
+    "search_preserved_on_source_change": true,
+    "source_chip_filters": true,
+    "all_sources_deduplicates_shared_page": true,
+    "mobile_width": 390,
+    "mobile_overflow": false,
+    "themes_checked": [
+      "light",
+      "dark"
+    ]
+  },
+  "live_admin_verification": {
+    "date": "2026-11-17",
+    "hosting": "GitHub Codespaces",
+    "owner": "admin",
+    "source_count": 2,
+    "groups": [
+      {
+        "page_count": 11,
+        "pagination_window_sizes": [
+          11
+        ]
+      },
+      {
+        "page_count": 32,
+        "pagination_window_sizes": [
+          12,
+          12,
+          8
+        ]
+      }
+    ],
+    "total_unique_pages": 43,
+    "overlap_count": 0,
+    "new_frontend_verified": true,
+    "pagination_verified": true,
+    "health": {
+      "database": true,
+      "ok": true,
+      "worker": true
+    },
+    "meta_content_mutations": false
+  },
+  "tests": {
+    "worker": 27,
+    "gateway": 6,
+    "frontend": 6,
+    "legacy_catalog_regressions": 51,
+    "native_ci": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44042796773",
+    "conclusion": "success"
+  },
+  "screenshots": [
+    "pages-by-system-user-desktop.jpg",
+    "pages-by-system-user-mobile.jpg",
+    "pages-by-system-user-dark-mobile.jpg"
+  ],
+  "secrets_and_page_identifiers": "Excluded from report and repository; screenshots use fake data."
+}

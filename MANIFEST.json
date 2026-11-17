@@ -1,6 +1,6 @@
 {
   "package": "PageManager source including v2",
-  "date": "2026-11-16",
+  "date": "2026-11-17",
   "excluded": "credentials, environment, operational data, media, runtime, toolchains and dependencies",
   "files": [
     {
@@ -1075,8 +1075,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 4511,
-      "sha256": "00504bd89cf5fb0cd2898901f6584c6cba7c1401e1998501dbd2dc9a28790adb"
+      "bytes": 4807,
+      "sha256": "78842e71ae69d9d8a821824c50a2ff78554e21d6fe6a48f06751b578d451bc2b"
     },
     {
       "path": "SETUP-USERS.bat",
@@ -1309,6 +1309,21 @@
       "sha256": "06abdd9fc3184d2384b9f948b3fd6d686b1cc2620d128abef143c50aed84056e"
     },
     {
+      "path": "v2/qa/pages-by-system-user-dark-mobile.jpg",
+      "bytes": 30217,
+      "sha256": "5e9bed0bc969badc804a05d3487ac830be40d024af40c0cc8e66dd353a38203e"
+    },
+    {
+      "path": "v2/qa/pages-by-system-user-desktop.jpg",
+      "bytes": 100906,
+      "sha256": "e6065ff833c35f5a1470e3635fb50817783cdbfdda67abce322ac91e2b5ed08c"
+    },
+    {
+      "path": "v2/qa/pages-by-system-user-mobile.jpg",
+      "bytes": 29424,
+      "sha256": "d81e6948213bcaa0b87061b2e0b6332809908ec4508729518c910b5ed741d9e1"
+    },
+    {
       "path": "v2/qa/pages-grid-lime-dark.jpg",
       "bytes": 131607,
       "sha256": "af645012fde4059161a34b1ebf2a9b38ed007c8f5e9d1b5466e2a8448cbb716b"
@@ -1344,19 +1359,24 @@
       "sha256": "085270035ff78a16f45b31f96a140a4c66da301986981911264e987599b46d01"
     },
     {
+      "path": "v2/qa/system-user-groups.json",
+      "bytes": 2447,
+      "sha256": "3237dd39c9fcd045a02e725d7ff6ba9b910ee6b3cf1a7601d150b42af64bf45e"
+    },
+    {
       "path": "v2/qa/v2-live-codespaces-login.jpg",
       "bytes": 61074,
       "sha256": "e36d252274ab6d86a2f355cf0e9b29a6c3dbef59ef2880d912a67a63599b0ea4"
     },
     {
       "path": "v2/qa/verification.json",
-      "bytes": 8799,
-      "sha256": "5108b08788db81f71f04474a5c4cd1a8bf662f14a27c54e91ae036b66f665b81"
+      "bytes": 9174,
+      "sha256": "02267d62afacc312b6d7390081bc9963648036b4ea36be69aaf8116d4d6a97ee"
     },
     {
       "path": "v2/README.md",
-      "bytes": 18321,
-      "sha256": "d2c05ce1b84f9cf3446c146f177f5f5a0ded77f483aa4ea4462c05fe60bc7844"
+      "bytes": 19105,
+      "sha256": "813c0920357d157a51c13f59a95bb8b0ba41df7f7e807b4b9268fc99a91f23c8"
     },
     {
       "path": "v2/requirements-lock.txt",
