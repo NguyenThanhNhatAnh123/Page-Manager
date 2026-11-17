@@ -1,5 +1,6 @@
 """Run against a built Rust gateway and a disposable, preseeded test DB."""
 import asyncio
+import hashlib
 import os
 import httpx
 import psycopg
@@ -86,3 +87,30 @@ async def test_full_mcp_defaults_upgrade_and_upload_are_owner_scoped(accounts):
             assert (await client.delete('/api/account/mcp-tokens/'+token['id'])).status_code==200
             assert (await mcp.post('/mcp',json={'jsonrpc':'2.0','id':3,'method':'ping'})).status_code==401
     finally:await client.aclose();await other.aclose()
+
+
+async def test_sessions_last_thirty_days_without_short_idle_expiry(accounts):
+    client,user=await login('test_user10')
+    other=None
+    try:
+        cookie=client.cookies.get('pm_session')
+        key=hashlib.sha256(cookie.encode()).hexdigest()
+        cookies=[entry for entry in client.cookies.jar if entry.name=='pm_session']
+        assert len(cookies)==1 and cookies[0].expires is not None
+        # Check the actual server deadline, then age the idle timestamp rather
+        # than sleeping. A second login must not clean up this valid session.
+        with psycopg.connect(os.environ['PM_TEST_DATABASE_URL'],prepare_threshold=None) as db:
+            expires,remaining=db.execute("SELECT expires_at,EXTRACT(EPOCH FROM (expires_at-now())) FROM pm_sessions WHERE digest=%s",(key,)).fetchone()
+            assert 2591940<float(remaining)<=2592000
+            assert abs(cookies[0].expires-expires.timestamp())<3
+            db.execute("UPDATE pm_sessions SET last_seen=now()-interval '29 days' WHERE digest=%s",(key,))
+        other,_=await login('test_user11')
+        response=await client.get('/api/auth/me')
+        assert response.status_code==200 and response.json()['user']['id']==user['id']
+        with psycopg.connect(os.environ['PM_TEST_DATABASE_URL'],prepare_threshold=None) as db:
+            assert db.execute('SELECT expires_at FROM pm_sessions WHERE digest=%s',(key,)).fetchone()[0]==expires
+            db.execute("UPDATE pm_sessions SET expires_at=now()-interval '1 second' WHERE digest=%s",(key,))
+        assert (await client.get('/api/auth/me')).status_code==401
+    finally:
+        await client.aclose()
+        if other is not None:await other.aclose()

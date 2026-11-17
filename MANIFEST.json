@@ -1230,8 +1230,8 @@
     },
     {
       "path": "v2/gateway/src/main.rs",
-      "bytes": 25532,
-      "sha256": "d77270944f021da1a43b1adfd8f7c0319d16d6d6859cfbad7300762cc1c40121"
+      "bytes": 25575,
+      "sha256": "56a964ebc2d021956c1448f5f060efbb3a613b2551f7ab4df81944159d5ec7d0"
     },
     {
       "path": "v2/migrations/001.sql",
@@ -1335,8 +1335,8 @@
     },
     {
       "path": "v2/README.md",
-      "bytes": 15449,
-      "sha256": "196094d95ae672708c67f0cf08354d0844d5eed2a9abd51fb25e90e9ceb33ac3"
+      "bytes": 15932,
+      "sha256": "ca80149ed3a804307aa62db0d950ab1aba11f559cde43d0edde970af7b4f57ea"
     },
     {
       "path": "v2/requirements-lock.txt",
@@ -1425,8 +1425,8 @@
     },
     {
       "path": "v2/tests/test_gateway.py",
-      "bytes": 5210,
-      "sha256": "953ac3de44da60af0b4bc024484b4eb0c59c4b68553117fc0d8808d22210d583"
+      "bytes": 6913,
+      "sha256": "e09378f410255e089f80148eb30965556e4e4e27119c1f8a2381c09edfd41b57"
     },
     {
       "path": "v2/tests/test_worker.py",

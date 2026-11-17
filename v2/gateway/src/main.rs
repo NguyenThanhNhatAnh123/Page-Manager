@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 // Twenty users can queue behind four memory-bounded password checks.
 const PASSWORD_QUEUE_WAIT:Duration=Duration::from_secs(25);
+const SESSION_LIFETIME_SECONDS:u32=30*24*60*60;
 
 #[derive(Clone)]
 struct App { db: PgPool, client: reqwest::Client, worker: String, key: String, origin: String, secure: bool, passwords: Arc<tokio::sync::Semaphore>, dummy: String }
@@ -45,7 +46,7 @@ async fn actor(app:&App,headers:&HeaderMap,method:&Method)->Result<Actor,Failure
   return Ok(Actor{id:row.get("id"),username:row.get("username"),role:row.get("role"),must_change:row.get("must_change"),timezone:row.get("timezone"),csrf:String::new(),mcp:true,can_write:row.get("can_write")});
  }
  let token=cookie(headers).filter(|s|s.len()==64).ok_or_else(||fail(StatusCode::UNAUTHORIZED,"Đăng nhập để tiếp tục."))?;
- let row=sqlx::query("SELECT u.id,u.username,u.role,u.must_change,u.timezone,s.csrf FROM pm_sessions s JOIN pm_users u ON u.id=s.user_id WHERE s.digest=$1 AND s.expires_at>now() AND s.last_seen>now()-interval '30 minutes' AND u.active")
+ let row=sqlx::query("SELECT u.id,u.username,u.role,u.must_change,u.timezone,s.csrf FROM pm_sessions s JOIN pm_users u ON u.id=s.user_id WHERE s.digest=$1 AND s.expires_at>now() AND u.active")
   .bind(digest(&token)).fetch_optional(&app.db).await.map_err(db_error)?.ok_or_else(||fail(StatusCode::UNAUTHORIZED,"Phiên đăng nhập đã hết hạn."))?;
  let a=Actor{id:row.get("id"),username:row.get("username"),role:row.get("role"),must_change:row.get("must_change"),timezone:row.get("timezone"),csrf:row.get("csrf"),mcp:false,can_write:true};
  if method!=Method::GET && method!=Method::HEAD {
@@ -61,8 +62,8 @@ async fn new_session(app:&App,id:&str,expected:&str)->Result<(String,String),Fai
  let mut tx=app.db.begin().await.map_err(db_error)?;
  let hash:Option<String>=sqlx::query_scalar("SELECT password_hash FROM pm_users WHERE id=$1 AND active FOR UPDATE").bind(id).fetch_optional(&mut *tx).await.map_err(db_error)?;
  if hash.as_deref()!=Some(expected) {return Err(fail(StatusCode::UNAUTHORIZED,"Tài khoản đã thay đổi. Đăng nhập lại."))}
- sqlx::query("DELETE FROM pm_sessions WHERE expires_at<now() OR last_seen<now()-interval '30 minutes'").execute(&mut *tx).await.map_err(db_error)?;
- sqlx::query("INSERT INTO pm_sessions(digest,user_id,csrf,expires_at) VALUES($1,$2,$3,now()+interval '12 hours')").bind(digest(&raw)).bind(id).bind(&csrf).execute(&mut *tx).await.map_err(db_error)?;
+ sqlx::query("DELETE FROM pm_sessions WHERE expires_at<now()").execute(&mut *tx).await.map_err(db_error)?;
+ sqlx::query("INSERT INTO pm_sessions(digest,user_id,csrf,expires_at) VALUES($1,$2,$3,now()+$4*interval '1 second')").bind(digest(&raw)).bind(id).bind(&csrf).bind(SESSION_LIFETIME_SECONDS as f64).execute(&mut *tx).await.map_err(db_error)?;
  tx.commit().await.map_err(db_error)?;
  Ok((raw,csrf))
 }
@@ -90,7 +91,7 @@ async fn login(State(app):State<App>,req:Request)->Result<Response,Failure> {
  sqlx::query("DELETE FROM pm_login_limits WHERE key=$1 OR window_start<now()-interval '1 day'").bind(key).execute(&app.db).await.map_err(db_error)?;
  sqlx::query("INSERT INTO pm_sync_requests(user_id) VALUES($1) ON CONFLICT(user_id) DO UPDATE SET requested_at=now(),status=CASE WHEN pm_sync_requests.status='running' THEN 'running' ELSE 'pending' END").bind(&id).execute(&app.db).await.map_err(db_error)?;
  let a=Actor{id,username:row.get("username"),role:row.get("role"),must_change:row.get("must_change"),timezone:row.get("timezone"),csrf,mcp:false,can_write:true};
- let mut response=axum::Json(json!({"user":a.public()})).into_response();response.headers_mut().insert(header::SET_COOKIE,cookie_header(&app,&raw,43200));Ok(response)
+ let mut response=axum::Json(json!({"user":a.public()})).into_response();response.headers_mut().insert(header::SET_COOKIE,cookie_header(&app,&raw,SESSION_LIFETIME_SECONDS));Ok(response)
 }
 
 async fn auth_routes(State(app):State<App>,req:Request)->Result<Response,Failure> {
@@ -116,7 +117,7 @@ async fn auth_routes(State(app):State<App>,req:Request)->Result<Response,Failure
  sqlx::query("UPDATE pm_mcp_tokens SET revoked_at=now() WHERE user_id=$1").bind(&a.id).execute(&mut *tx).await.map_err(db_error)?;
  tx.commit().await.map_err(db_error)?;
  let (raw,csrf)=new_session(&app,&a.id,&hashed).await?;
- let mut response=axum::Json(json!({"user":Actor{csrf,must_change:false,..a}.public()})).into_response();response.headers_mut().insert(header::SET_COOKIE,cookie_header(&app,&raw,43200));Ok(response)
+ let mut response=axum::Json(json!({"user":Actor{csrf,must_change:false,..a}.public()})).into_response();response.headers_mut().insert(header::SET_COOKIE,cookie_header(&app,&raw,SESSION_LIFETIME_SECONDS));Ok(response)
 }
 
 async fn account(State(app):State<App>,req:Request)->Result<Response,Failure> {
