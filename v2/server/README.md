@@ -1,5 +1,7 @@
 # Cài PageManager chạy 24/24 trên server Windows 11
 
+**Phương án hiện được chọn: [chạy trực tiếp trên Windows 11](windows/README.md)** với PostgreSQL, Python, Rust và Caddy, không cần máy ảo. Domain dự kiến `eagleglobal2027.com`. Tài liệu bên dưới giữ phương án Linux/VM tùy chọn; không phải thành phần bắt buộc. `CHECK-SERVER-WINDOWS.bat` hiện kiểm tra bộ native; kiểm tra Hyper-V chỉ khi tự gọi `Windows-Host.ps1`.
+
 Phương án vận hành: **Windows 11 → Hyper-V → Ubuntu Server 24.04 LTS → Docker Engine → Rust + Python + PostgreSQL 18**. Máy ảo khởi động cùng Windows, Docker và ứng dụng khởi động cùng Ubuntu. Các lớp này chạy khi chưa có người đăng nhập Windows. Lịch Reel và đồng bộ đăng nhập do server xử lý; máy dev/Codex/Claude không cần mở liên tục.
 
 Đây là bộ chuẩn bị cài trên **server riêng**. Chưa có phiên truy cập server nên chưa cài hay kiểm tra khởi động lại trên máy đó. Codespaces hiện tại tiếp tục là môi trường thử cho tới khi chuyển dữ liệu và đổi endpoint.

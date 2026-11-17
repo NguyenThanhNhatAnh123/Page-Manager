@@ -1,16 +1,17 @@
 PAGEMANAGER V2 — SERVER VÀ MÁY DEV
 
 Vận hành 24/24 trên server Windows 11:
-1. Đọc v2/server/README.md để biết phần mềm, RAM/SSD và cách cài.
+1. Đọc v2/server/windows/README.md để chạy trực tiếp Windows, không máy ảo.
 2. Chạy CHECK-SERVER-WINDOWS.bat ngay trên server để kiểm tra chỉ đọc.
-3. Phương án server: Hyper-V + Ubuntu Server 24.04 LTS + Docker Engine.
-4. Bộ cài tạo service tự khởi động, health timer, HTTPS tùy chọn và backup.
+3. Cần Python 3.12, PostgreSQL Windows, Caddy và bundle Rust/FE build sẵn.
+4. Task Scheduler/Windows Service tự khởi động; HTTPS eagleglobal2027.com.
 5. Cài mới có 20 tài khoản trống. Chuyển kho hiện tại cần database, media
    và đúng khóa mã hóa; không tạo lại lệnh đăng cho các Reel đã xuất bản.
 
 Máy dev hiện dùng bản thử Codespaces: CONNECT-V2-CODESPACE.bat,
 http://127.0.0.1:8020. Codespaces có idle timeout, không phải server 24/24.
-Không cài các thành phần server lên máy dev chỉ để giữ tunnel Codespaces.
+Máy này chỉ dev/test; không cài task/service server hoặc đổi DNS tại đây.
+Phương án Hyper-V/Linux vẫn tùy chọn, xem v2/server/README.md.
 
 Phần bên dưới là hướng dẫn launcher LEGACY cổng 8010; không dùng để triển
 khai PageManager v2 nhiều người dùng. Xem README.md và v2/README.md trước.

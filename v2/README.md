@@ -2,6 +2,8 @@
 
 Rust gateway + Python Meta worker + React/TypeScript frontend. Mỗi tài khoản có một namespace PostgreSQL, khóa mã hóa token dẫn xuất riêng và thư mục video riêng. Tối đa **20 tài khoản tổng cộng**, mặc định gồm `admin` và `user02` đến `user20`. Admin cũng có kho nghiệp vụ riêng.
 
+Server Windows 11 có thể chạy trực tiếp, không cần Ubuntu/Hyper-V/WSL/Docker: xem [bộ native Windows](server/windows/README.md). Domain dự kiến **eagleglobal2027.com**. Máy hiện tại chỉ dev/test, không đăng ký service server hoặc đổi DNS. CI Windows build Rust/MSVC và kiểm tra worker, 20 kho, gateway, task SYSTEM và bundle; việc chạy trên máy bật Smart App Control vẫn phụ thuộc độ tin cậy/chữ ký của executable và thư viện Python.
+
 ## Phạm vi
 
 - Giữ lõi Python `PageManager`, `TokenReelAssets`, `TokenReelScheduler`, revision token, UUID chống trùng và checkpoint trước mỗi lệnh Meta.

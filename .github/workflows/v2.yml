@@ -41,7 +41,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: {toolchain: '1.90.0'}
       - run: pip install -r requirements.txt
-      - run: python -m pytest tests/test_worker.py tests/test_server.py -q
+      - run: python -m pytest tests/test_worker.py tests/test_server.py tests/test_windows_native.py -q
       - run: cargo build --locked --manifest-path gateway/Cargo.toml
       - run: npm ci && npm test && npm run build
         working-directory: v2/frontend
@@ -86,3 +86,31 @@ jobs:
           sudo python3 server/manager.py --env-file /tmp/pm-server-https-ci.env init --origin https://pages.example.com
           sudo docker compose --env-file /tmp/pm-server-https-ci.env -f server/compose.yml config --quiet
           docker run --rm -e PM_HOSTNAME=pages.example.com -v "$PWD/server/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile
+  windows_native:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: v2
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: dtolnay/rust-toolchain@stable
+        with: {toolchain: '1.90.0'}
+      - run: pip install -r requirements.txt
+      - run: cargo build --locked --release --manifest-path gateway/Cargo.toml
+      - run: npm ci; if ($LASTEXITCODE) { exit $LASTEXITCODE }; npm test; if ($LASTEXITCODE) { exit $LASTEXITCODE }; npm run build; exit $LASTEXITCODE
+        working-directory: v2/frontend
+      - name: Native Windows database, gateway, process cleanup and SYSTEM startup
+        run: ./tests/windows_native_smoke.ps1
+      - name: Package Windows application without private data
+        run: python scripts/package_windows.py --gateway gateway/target/release/pagemanager-gateway.exe --output .runtime/releases/PageManager-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PageManager-windows-x64
+          path: v2/.runtime/releases/PageManager-windows-x64.zip
+          retention-days: 30

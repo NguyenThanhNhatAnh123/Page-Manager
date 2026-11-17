@@ -5,6 +5,7 @@ import getpass
 import os
 import secrets
 import subprocess
+import sys
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -15,12 +16,8 @@ from cryptography.fernet import Fernet
 from dotenv import dotenv_values
 
 ROOT=Path(__file__).resolve().parents[1]
-
-
-def private(path):
-    if os.name=='nt':
-        subprocess.run(['icacls',str(path),'/inheritance:r','/grant:r',f"{os.environ.get('USERDOMAIN','.')}{chr(92)}{getpass.getuser()}:(F)",'SYSTEM:(F)'],check=True,capture_output=True)
-    else:path.chmod(0o600 if path.is_file() else 0o700)
+sys.path.insert(0,str(ROOT))
+from scripts.private_files import private
 
 
 def main():

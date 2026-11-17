@@ -219,6 +219,7 @@ async fn health(State(app):State<App>)->Response {
 
 #[tokio::main]
 async fn main()->Result<(),Box<dyn std::error::Error>> {
+ if env::args().any(|arg|arg=="--version") {println!("PageManager gateway {}",env!("CARGO_PKG_VERSION"));return Ok(())}
  dotenvy::dotenv().ok();
  let db=PgPoolOptions::new().max_connections(12).connect(&env::var("DATABASE_URL")?).await?;
  sqlx::raw_sql(include_str!("../../migrations/001.sql")).execute(&db).await?;

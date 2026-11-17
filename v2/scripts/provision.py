@@ -23,7 +23,7 @@ def provision(dsn,output):
         output=Path(output);output.parent.mkdir(parents=True,exist_ok=True)
         output.write_text('PageManager v2 — initial credentials; change on first login.\n'+'\n'.join(credentials)+'\n',encoding='utf-8')
         if os.name=='nt':
-            from scripts.setup import private
+            from scripts.private_files import private
             private(output)
         else:output.chmod(0o600)
     return True
