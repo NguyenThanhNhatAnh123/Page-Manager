@@ -169,9 +169,10 @@
     "source_changes": "full business permissions default for new owner tokens, owner-scoped upgrade, Codex and Claude namespace-only approval examples",
     "worker_mcp_checks": "passed",
     "ui_default_full_permission": "checked",
-    "real_remote_connection": "not verified with installed Codex/Claude clients; no persistent Linux/Codespaces deployment yet",
-    "real_local_connection": "not verified; no gateway on 8020, worker on 8021 or PostgreSQL on 55432; Codex and Claude CLIs are installed",
-    "screenshot": "mcp-remote-settings.jpg"
+    "real_remote_connection": "Verified from Windows Codex/Claude CLIs to a private Codespaces application port; another physical machine is deferred.",
+    "real_local_connection": "Both installed CLIs completed via_status and pages_connections against live v2 through Windows localhost:8020.",
+    "screenshot": "mcp-remote-settings.jpg",
+    "report": "mcp-clients-live.json"
   },
   "direct_publication": {
     "policy": "direct; no Telegram approval or repeated confirmation for owner-provided publication requests",
@@ -189,8 +190,8 @@
     "client_instructions": "examples/agent-publication-instructions.md"
   },
   "linux_ci": {
-    "commit": "d9c807ed0919e1e72a9dfc2541d3fd73ec8ec8d6",
-    "url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44014632298",
+    "commit": "5b4e8609b225d39d2d03e789a6bd0869ba75a532",
+    "url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44018046462",
     "conclusion": "success",
     "worker_tests": 23,
     "gateway_tests": 3,
@@ -199,6 +200,34 @@
     "production_container_health": "database=true; worker=true",
     "fresh_user_count": 20,
     "meta_network_in_business_tests": "disabled",
-    "persistent_deployment": false
+    "persistent_deployment": false,
+    "codespaces_feature_image": "passed"
+  },
+  "live_deployment": {
+    "hosting": "GitHub Codespaces",
+    "source_commit": "5b4e8609b225d39d2d03e789a6bd0869ba75a532",
+    "local_url": "http://127.0.0.1:8020",
+    "port_visibility": "private",
+    "machine": "2 CPU, 8 GB RAM, 32 GB disk",
+    "idle_timeout_minutes": 30,
+    "components": [
+      "Rust release gateway",
+      "Python worker",
+      "PostgreSQL 18",
+      "built React frontend"
+    ],
+    "initial_accounts": 20,
+    "windows_smart_app_control": "unchanged",
+    "wsl_installed": false,
+    "health": {
+      "database": true,
+      "ok": true,
+      "worker": true
+    },
+    "cli_mcp_passed": [
+      "codex",
+      "claude"
+    ],
+    "report": "mcp-clients-live.json"
   }
 }

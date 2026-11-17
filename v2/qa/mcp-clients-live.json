@@ -1,0 +1,72 @@
+{
+  "checked_at": "2026-11-17T05:03:07.107733+00:00",
+  "health": {
+    "database": true,
+    "ok": true,
+    "worker": true
+  },
+  "protocol": "2025-03-26",
+  "tool_count": 30,
+  "full_business_scope": true,
+  "direct_protocol_reads": [
+    "pages_connections",
+    "via_status"
+  ],
+  "publication_policy": {
+    "mode": "direct",
+    "approval_required": false,
+    "telegram_approval": false,
+    "repeat_confirmation_required": false
+  },
+  "meta_credentials_imported": false,
+  "meta_mutations": false,
+  "runtime": {
+    "hosting": "GitHub Codespaces",
+    "source_commit": "5b4e8609b225d39d2d03e789a6bd0869ba75a532",
+    "local_url": "http://127.0.0.1:8020",
+    "port_visibility": "private",
+    "machine": "2 CPU, 8 GB RAM, 32 GB disk",
+    "idle_timeout_minutes": 30,
+    "components": [
+      "Rust release gateway",
+      "Python worker",
+      "PostgreSQL 18",
+      "built React frontend"
+    ],
+    "initial_accounts": 20,
+    "windows_smart_app_control": "unchanged",
+    "wsl_installed": false
+  },
+  "clients": {
+    "codex": {
+      "client": "codex",
+      "exit_code": 0,
+      "completed_mcp_tools": [
+        "pages_connections",
+        "via_status"
+      ],
+      "passed": true,
+      "version": "0.163.0"
+    },
+    "claude": {
+      "client": "claude",
+      "exit_code": 0,
+      "completed_mcp_tools": [
+        "pages_connections",
+        "via_status"
+      ],
+      "passed": true,
+      "version": "2.1.326"
+    }
+  },
+  "test_configuration": "Isolated CLI sessions; only two read tools enabled. Token has full business scope in its owner workspace. Global MCP settings unchanged.",
+  "credentials": "Initial account file private; MCP credential encrypted locally. No secrets included in source, screenshots or report.",
+  "known_limitations": [
+    "Codespaces is a trial environment with usage quotas and idle shutdown, not 24/7 Reel hosting.",
+    "Second physical client machine not tested.",
+    "gh codespace ssh on this Windows client returns Connection refused; web console used for bootstrap.",
+    "Reconnect helper checked against running environment; stopped-to-running resume not deliberately exercised.",
+    "Codex emits a nonfatal warning about clamping the pre-existing local SessionEnd hook timeout; both MCP calls succeed."
+  ],
+  "screenshot": "v2-live-codespaces-login.jpg"
+}

@@ -29,6 +29,11 @@
       "sha256": "ff7fe4a13f172130d6687ad60a525a872dc6c5b4599684378082c70493ae5e44"
     },
     {
+      "path": "CONNECT-V2-CODESPACE.bat",
+      "bytes": 191,
+      "sha256": "09cfde72cb06153b4cef574719f4f7fd22a8b02a2d87a454fbfdfaa6b862164a"
+    },
+    {
       "path": "meta-page-manager/.env.example",
       "bytes": 1152,
       "sha256": "e3e531d1b4baee89a1503dd29753ac85906f83c1274f787a6cddfa173597787e"
@@ -1070,8 +1075,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 2985,
-      "sha256": "3ae26608dbbd79a81c203dc16176dc51db0cdfabdcfff4d283ef23f768a931db"
+      "bytes": 3750,
+      "sha256": "d1e4f3ed4f947f486e8b62b32b24f0408dd374741b6008cadd80a2fbe7bb8d50"
     },
     {
       "path": "SETUP-USERS.bat",
@@ -1125,8 +1130,8 @@
     },
     {
       "path": "v2/examples/codespaces-plan.md",
-      "bytes": 3417,
-      "sha256": "1138d641ed8c8147fb940f5146affd725010648ae6c3f864de6cb93c8ba78251"
+      "bytes": 4855,
+      "sha256": "c6ee35236f95a48829a1c8c9630c4214f961515513ad3fcd3965aa19281731c7"
     },
     {
       "path": "v2/examples/codex-mcp.toml",
@@ -1244,6 +1249,11 @@
       "sha256": "83ecfa40f67dad1602803268b0c0258dba4deff659333add448f3d3296c50347"
     },
     {
+      "path": "v2/qa/mcp-clients-live.json",
+      "bytes": 2404,
+      "sha256": "2736632733ebd42e94f22a4f54b082b49ff8456b0d5c55882b7f691517faa6b7"
+    },
+    {
       "path": "v2/qa/mcp-remote-settings.jpg",
       "bytes": 57803,
       "sha256": "285078b7a6477dda628003ff45d75b34214c26b6086f7bb604b53c3d87eb0573"
@@ -1300,8 +1310,8 @@
     },
     {
       "path": "v2/qa/README.md",
-      "bytes": 8224,
-      "sha256": "da2022eadab8af0d9dc244c777675613ec4beb93d7504b49a906eded862bd745"
+      "bytes": 9467,
+      "sha256": "7844bc60c2f9eceebf3131cb79327a24abe15e7bc426b1659dab44418a95a070"
     },
     {
       "path": "v2/qa/reel-review.png",
@@ -1314,14 +1324,19 @@
       "sha256": "085270035ff78a16f45b31f96a140a4c66da301986981911264e987599b46d01"
     },
     {
+      "path": "v2/qa/v2-live-codespaces-login.jpg",
+      "bytes": 61074,
+      "sha256": "e36d252274ab6d86a2f355cf0e9b29a6c3dbef59ef2880d912a67a63599b0ea4"
+    },
+    {
       "path": "v2/qa/verification.json",
-      "bytes": 7255,
-      "sha256": "e086abaaadcacaf3b9fd60060ff09200dbb52777ac36ca12170031a754251464"
+      "bytes": 8093,
+      "sha256": "83b16e55dd2bfbf185aba234802b2556743fa7385b757af81365ebf183bfe022"
     },
     {
       "path": "v2/README.md",
-      "bytes": 14129,
-      "sha256": "fc7dd506a8937c0b5ae35f0e7137aa86597d9b7564d203531ebb32c91ea425fe"
+      "bytes": 15449,
+      "sha256": "196094d95ae672708c67f0cf08354d0844d5eed2a9abd51fb25e90e9ceb33ac3"
     },
     {
       "path": "v2/requirements-lock.txt",
@@ -1342,6 +1357,11 @@
       "path": "v2/scripts/codespaces_start.py",
       "bytes": 2999,
       "sha256": "9995a2ddf94002495b36b26e43088e00b51180b5fc150d4f96b58a7951ec28f8"
+    },
+    {
+      "path": "v2/scripts/connect_codespace.py",
+      "bytes": 4029,
+      "sha256": "1a7194620791fe9b98cd002c409be4455e7c14957d722679e33a0b352b205428"
     },
     {
       "path": "v2/scripts/container.py",

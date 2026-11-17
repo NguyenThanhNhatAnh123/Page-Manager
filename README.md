@@ -16,7 +16,9 @@ FE đã build và kiểm tra giao diện bằng dữ liệu QA. Worker đã qua 
 
 Kiểm tra Meta chỉ đọc đã xác thực nguồn System User, thấy 11 Page, đọc thử 3 Page và view/bình luận của 3 video. Chia sẻ chưa có dữ liệu riêng trong mẫu nên giữ null. Không đăng hoặc đặt lịch nội dung thật để thử kết nối.
 
-Rust gateway chưa build/chạy thành công trên máy Windows thực hiện thay đổi do Smart App Control chặn công cụ/build script Rust. Không tắt bảo vệ Windows và không cài WSL. Cấu hình Codespaces đã chuẩn bị nhưng chưa triển khai; kết nối MCP thật qua Codex/Claude và lịch chạy liên tục chưa được xác minh. Codespaces có quota và tự dừng, phù hợp chạy thử hơn hosting lịch Reel 24/7.
+Smart App Control trên máy Windows vẫn giữ nguyên; không cài WSL. Bản Rust/Python/PostgreSQL thật đã chạy trên GitHub Codespaces, qua cổng riêng được chuyển về `http://127.0.0.1:8020` trên máy quản trị. Đã provision 20 tài khoản và kiểm tra hai CLI thật: Codex và Claude đều gọi thành công `via_status`, `pages_connections`. Token thử có quyền nghiệp vụ trong kho chủ token và máy chủ trả đủ 30 công cụ. Các lần gọi thử chỉ đọc; chưa nhập token Meta hay dữ liệu vận hành lên Codespace. [Báo cáo MCP thật](v2/qa/mcp-clients-live.json).
+
+Codespace thử tự dừng sau 30 phút không hoạt động, có quota/chi phí lưu trữ và compute; chưa cam kết vận hành lịch Reel 24/7. Trên máy đã cấu hình, dùng `CONNECT-V2-CODESPACE.bat` để nối lại. Máy mới có thể chạy `python v2/scripts/connect_codespace.py --codespace <ten-codespace>` sau khi đăng nhập GitHub CLI bằng tài khoản có quyền truy cập. Công cụ chỉ khởi động lại môi trường có sẵn và chuyển cổng 8020 ở chế độ private; không tạo dịch vụ mới hoặc thay đổi thanh toán.
 
 [CI Linux](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44014632298) đã build Rust 1.90/FE, đạt 23 kiểm tra worker và 3 kiểm tra gateway, gồm 20 phiên đăng nhập đồng thời và quyền MCP. Image triển khai đã khởi chạy với PostgreSQL 18 mới, health check xác nhận database/worker và đủ 20 tài khoản. CI tắt các lệnh gọi Meta trong bộ kiểm tra nghiệp vụ; không đồng nghĩa đã triển khai dịch vụ luôn bật hoặc đã kiểm tra hai MCP CLI trên Windows.
 
