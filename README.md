@@ -12,7 +12,7 @@ MCP Codex/Claude hỗ trợ quản lý Page, video và đăng/đặt lịch Reel
 
 ## Trạng thái xác minh
 
-FE đã build và kiểm tra giao diện bằng dữ liệu QA. Worker đã qua 23 kiểm tra PostgreSQL qua PGlite phát triển; 194 kiểm tra liên quan Graph/service/connection đã đạt sau sửa đường dẫn thống kê. PGlite chỉ phục vụ kiểm thử, không thay PostgreSQL vận hành.
+FE đã build và kiểm tra giao diện bằng dữ liệu QA. Worker đã qua 26 kiểm tra, cả PGlite phát triển và PostgreSQL 18 trong CI; 194 kiểm tra liên quan Graph/service/connection đã đạt sau sửa đường dẫn thống kê. PGlite chỉ phục vụ kiểm thử, không thay PostgreSQL vận hành.
 
 Token Meta đã được nhập mã hóa vào kho `admin` trên Codespaces. Đồng bộ thành công 11 Page và phát hiện 33 video; lượt đăng nhập thật tự tạo yêu cầu cập nhật nền. View/bình luận đọc được cho 33 video, chia sẻ đọc được cho 5 video; các số chia sẻ còn thiếu giữ null. Không đăng hoặc đặt lịch nội dung thật để thử kết nối.
 
@@ -22,7 +22,7 @@ Phiên đăng nhập web có hạn cố định 30 ngày và không hết hạn 
 
 Codespace thử tự dừng sau 30 phút không hoạt động, có quota/chi phí lưu trữ và compute; chưa cam kết vận hành lịch Reel 24/7. Trên máy đã cấu hình, dùng `CONNECT-V2-CODESPACE.bat` để nối lại. Máy mới có thể chạy `python v2/scripts/connect_codespace.py --codespace <ten-codespace>` sau khi đăng nhập GitHub CLI bằng tài khoản có quyền truy cập. Công cụ chỉ khởi động lại môi trường có sẵn và chuyển cổng 8020 ở chế độ private; không tạo dịch vụ mới hoặc thay đổi thanh toán.
 
-[CI Linux](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44033132150) đã build Rust 1.90/FE, đạt 23 kiểm tra worker và 4 kiểm tra gateway, gồm 20 phiên đăng nhập đồng thời, quyền MCP và thời hạn session 30 ngày. Image triển khai đã khởi chạy với PostgreSQL 18 mới, health check xác nhận database/worker và đủ 20 tài khoản. CI tắt các lệnh gọi Meta trong bộ kiểm tra nghiệp vụ; kết quả Meta/CLI thật được kiểm tra riêng ở trên.
+[CI Linux](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44036907711) đã build Rust 1.90/FE, đạt 26 kiểm tra worker, 6 kiểm tra gateway và 6 kiểm tra FE. Bao gồm 20 phiên đăng nhập đồng thời, kho riêng dù trùng ID/hash/request UUID, chặn truy cập video chéo kho, quyền MCP, khóa một người dùng và session 30 ngày. FE đã sửa việc nhận phản hồi của phiên cũ và đồng bộ đăng xuất giữa tab; [báo cáo tách kho](v2/qa/multi-user-isolation.json) ghi phạm vi và giới hạn. Image triển khai khởi chạy với PostgreSQL 18 mới, health check xác nhận database/worker và đủ 20 tài khoản. Các kiểm tra nghiệp vụ dùng dữ liệu giả và tắt Meta; kết quả Meta/CLI thật được kiểm tra riêng ở trên.
 
 ## Dữ liệu và khóa
 

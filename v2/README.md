@@ -15,6 +15,16 @@ Rust gateway + Python Meta worker + React/TypeScript frontend. Mỗi tài khoả
 - Pipeline idea/producer/Podsach/audio/Chrome không được khởi động trong v2.
 - V2 đăng trực tiếp, không tạo hoặc chờ duyệt Telegram. Khi chủ kho giao video để đăng và đã rõ Page/nguồn, agent gọi lệnh luôn, không hỏi xác nhận lại: không có giờ hẹn thì đăng ngay, có giờ hẹn thì đặt lịch; caption dùng nội dung đã giao/đã thống nhất hoặc để trống. API/MCP không kế thừa mặc định duyệt của lõi cũ. Scheduler v2 giữ nguyên kiểm tra Page/token/file, checkpoint và cơ chế chống đăng trùng.
 
+## Tách kho nhiều người dùng
+
+Gateway lấy UUID chủ kho từ session hoặc personal MCP token đã xác thực, rồi tự tạo header nội bộ gửi sang worker. Header/query/đối số do máy khách gửi không chọn được kho khác. Vai trò `admin` quản lý tài khoản; các API nghiệp vụ và MCP của admin vẫn dùng kho riêng của chính admin.
+
+Mỗi UUID có schema `w_<UUID>`, thư mục video, khóa mã hóa token dẫn xuất, avatar cache và bộ lập lịch riêng. Page ID, connection ID, job ID hoặc request UUID giống nhau ở hai kho vẫn được giải quyết độc lập. Chống trùng video theo hash chỉ tìm trong kho đang xác thực. Số liệu, lịch sử đo, nhật ký và yêu cầu đồng bộ đăng nhập đều gắn với chủ kho.
+
+FE xóa cache và đóng nội dung đang soạn khi phiên thay đổi ở tab khác. Phản hồi API/upload thuộc phiên cũ bị bỏ qua, kể cả lỗi 401 đến muộn. Một profile trình duyệt dùng chung cookie giữa các tab; dùng profile riêng nếu cần đồng thời nhiều tài khoản. Thông báo giữa tab chỉ lưu nonce ngẫu nhiên, không lưu token hoặc dữ liệu kho.
+
+Phạm vi cách ly này nằm ở ứng dụng, schema và đường dẫn lưu trữ. Tài khoản vận hành có quyền vào hệ điều hành hoặc PostgreSQL vẫn quản trị được dữ liệu; quyền reset mật khẩu của admin được giữ. Kiểm tra dùng database và người dùng thử riêng, không khóa hoặc sửa dữ liệu tài khoản thật. Xem [báo cáo tách kho](qa/multi-user-isolation.json).
+
 ## Cấu trúc
 
 ```text
@@ -89,7 +99,7 @@ Lượt kiểm tra Meta ban đầu trên Windows chỉ đọc đã xác thực S
 
 `scripts/check_live_meta.py` là công cụ đọc thử riêng: nhập token qua prompt ẩn; `--cache` lưu mã hóa trong runtime riêng, `--use-cache --metrics` đọc lại và thử mẫu chỉ số. Báo cáo không chứa tên/ID/token; không ghi vào database người dùng hoặc chạy scheduler. Cache thử không thay thế thao tác thêm nguồn System User vào đúng kho sau khi v2 chạy.
 
-[CI Linux mới nhất đã đạt](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44033132150): build Rust 1.90/FE; 23 kiểm tra worker với PostgreSQL 18; 4 kiểm tra gateway thật gồm 20 đăng nhập đồng thời, CSRF, phân quyền kho/MCP và session 30 ngày. Bài kiểm tra session làm cũ `last_seen` 29 ngày, đăng nhập tài khoản khác để chạy cleanup, xác nhận phiên còn hợp lệ và hạn không trượt; sau đó đặt hạn đã qua và xác nhận 401. Bộ Docker triển khai cũng build và khởi chạy thành công với PostgreSQL 18 mới, health check đạt và đủ 20 tài khoản. Bảo vệ mật khẩu và giới hạn 4 phép xác thực đồng thời vẫn giữ.
+[CI Linux mới nhất đã đạt](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44036907711): build Rust 1.90/FE; 26 kiểm tra worker với PostgreSQL 18; 6 kiểm tra gateway thật và 6 kiểm tra FE. Gồm 20 đăng nhập đồng thời, CSRF, phân quyền kho/MCP, giả mạo chủ kho, chặn video chéo kho, thu hồi phiên/token riêng từng chủ và session 30 ngày. Bài kiểm tra session làm cũ `last_seen` 29 ngày, đăng nhập tài khoản khác để chạy cleanup, xác nhận phiên còn hợp lệ và hạn không trượt; sau đó đặt hạn đã qua và xác nhận 401. Bộ Docker triển khai cũng build và khởi chạy thành công với PostgreSQL 18 mới, health check đạt và đủ 20 tài khoản. Bảo vệ mật khẩu và giới hạn 4 phép xác thực đồng thời vẫn giữ.
 
 Lượt chạy thật sau đó: Codespaces đã dựng thành công cả image môi trường và stack ứng dụng; bản sửa kho Yarn được [CI kiểm tra lại](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44018046462). Health qua `http://127.0.0.1:8020` xác nhận PostgreSQL/worker khỏe, 20 tài khoản được tạo. Codex CLI 0.163.0 và Claude CLI 2.1.326 trên Windows đều gọi MCP thật thành công. Chính sách runtime là `direct`, không duyệt Telegram hoặc xác nhận lại. Xem [báo cáo hai CLI](qa/mcp-clients-live.json), được ghi trước khi nhập Meta.
 

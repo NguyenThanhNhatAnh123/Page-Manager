@@ -1075,8 +1075,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 4194,
-      "sha256": "bc574ebeb074aef92d3c8c683bf6734b9c5632ef71c58632cfeaa8d62ac2cc42"
+      "bytes": 4511,
+      "sha256": "00504bd89cf5fb0cd2898901f6584c6cba7c1401e1998501dbd2dc9a28790adb"
     },
     {
       "path": "SETUP-USERS.bat",
@@ -1269,6 +1269,16 @@
       "sha256": "285078b7a6477dda628003ff45d75b34214c26b6086f7bb604b53c3d87eb0573"
     },
     {
+      "path": "v2/qa/multi-user-beta-qa.jpg",
+      "bytes": 34048,
+      "sha256": "01f6567ffb78c5825f63fb62e652739a127f968578857e8ea558c9f4700e47e1"
+    },
+    {
+      "path": "v2/qa/multi-user-isolation.json",
+      "bytes": 3381,
+      "sha256": "1ad3b9b26e7f1c2b7357939d28d97b9ca87a6a41e977851168a4bec2ed74c2fb"
+    },
+    {
       "path": "v2/qa/page-manager-clean-dark.jpg",
       "bytes": 41858,
       "sha256": "03f76a9d05e09edf25c30016531764f470686de10582bbb1989e5439a5ff9ed7"
@@ -1340,13 +1350,13 @@
     },
     {
       "path": "v2/qa/verification.json",
-      "bytes": 8154,
-      "sha256": "59d72ddc2c313008e5d87d4eaba2578e7dabd470fb0333daa7f191101f7d682d"
+      "bytes": 8799,
+      "sha256": "5108b08788db81f71f04474a5c4cd1a8bf662f14a27c54e91ae036b66f665b81"
     },
     {
       "path": "v2/README.md",
-      "bytes": 16527,
-      "sha256": "c244ce600cd29824d02b96590909ccea56d481526a46c2ceb3a598b1696768f7"
+      "bytes": 18321,
+      "sha256": "d2c05ce1b84f9cf3446c146f177f5f5a0ded77f483aa4ea4462c05fe60bc7844"
     },
     {
       "path": "v2/requirements-lock.txt",

@@ -5,7 +5,7 @@
     "scope": "token reel scheduler, assets, inputs, graph, connection revisions"
   },
   "v2_worker_tests": {
-    "passed": 23,
+    "passed": 26,
     "engine": "PostgreSQL 18 in Linux CI; earlier local checks used PGlite development socket",
     "includes": [
       "20 isolated namespaces",
@@ -21,7 +21,10 @@
       "direct API/MCP publication without Telegram approval",
       "legacy required-review settings do not gate v2",
       "immediate MCP replay preserves job UUID",
-      "uncertain publish only verifies without a second finish"
+      "uncertain publish only verifies without a second finish",
+      "Twenty owner uploads and operation UUID isolation",
+      "Owner-only metrics, history and events over HTTP/MCP",
+      "Private worker rejects forged or malformed owner authentication"
     ]
   },
   "frontend": {
@@ -114,6 +117,11 @@
         "pages-grid-lime-mobile.jpg"
       ],
       "console_errors": 0
+    },
+    "session_isolation": {
+      "tests": 6,
+      "two_tab_browser_check": "passed with dummy auth fixture",
+      "report": "multi-user-isolation.json"
     }
   },
   "rust_build": {
@@ -126,7 +134,7 @@
   },
   "gateway_e2e": {
     "status": "passed_on_linux",
-    "tests": 4,
+    "tests": 6,
     "ci_configured": true,
     "ci_executed": true
   },
@@ -188,22 +196,23 @@
     "client_instructions": "examples/agent-publication-instructions.md"
   },
   "linux_ci": {
-    "commit": "81ef34e74f81ac46969dac33e9f65ee094ec4148",
-    "url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44033132150",
+    "commit": "3bc2753d79d547376b0fc491c8719e94153ea1ad",
+    "url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44036907711",
     "conclusion": "success",
-    "worker_tests": 23,
-    "gateway_tests": 4,
+    "worker_tests": 26,
+    "gateway_tests": 6,
     "postgres_version": 18,
     "rust_version": "1.90.0",
     "production_container_health": "database=true; worker=true",
     "fresh_user_count": 20,
     "meta_network_in_business_tests": "disabled",
     "persistent_deployment": false,
-    "codespaces_feature_image": "passed"
+    "codespaces_feature_image": "passed",
+    "frontend_tests": 6
   },
   "live_deployment": {
     "hosting": "GitHub Codespaces",
-    "source_commit": "81ef34e74f81ac46969dac33e9f65ee094ec4148",
+    "source_commit": "3bc2753d79d547376b0fc491c8719e94153ea1ad",
     "local_url": "http://127.0.0.1:8020",
     "port_visibility": "private",
     "machine": "2 CPU, 8 GB RAM, 32 GB disk",
@@ -228,6 +237,14 @@
     ],
     "report": "mcp-clients-live.json",
     "admin_meta_report": "admin-meta-login-live.json",
-    "web_session_days": 30
+    "web_session_days": 30,
+    "multi_user_report": "multi-user-isolation.json"
+  },
+  "multi_user_isolation": {
+    "test_accounts": 20,
+    "result": "passed",
+    "report": "multi-user-isolation.json",
+    "real_meta_calls": false,
+    "production_users_modified": false
   }
 }

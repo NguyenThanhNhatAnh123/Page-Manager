@@ -1,0 +1,63 @@
+{
+  "date": "2026-11-16",
+  "source_commit": "3bc2753d79d547376b0fc491c8719e94153ea1ad",
+  "test_accounts": 20,
+  "production_accounts_modified_by_tests": false,
+  "meta_calls_in_isolation_tests": false,
+  "scope": "Application/API isolation using authenticated owner identity, PostgreSQL schemas, owner-derived encryption and private media paths.",
+  "passed_boundaries": [
+    "Twenty simultaneous logins enqueue separate owner sync requests",
+    "Separate Page and System User stores even with matching connection and Page IDs",
+    "A second owner's encryption key cannot decrypt the first owner's token",
+    "Identical uploaded bytes deduplicate within one owner and retain twenty distinct owner assets",
+    "Cross-owner asset preview IDs return 404",
+    "The same request UUID resolves to a different private schedule in each of twenty owners",
+    "Canceling one owner's schedule preserves the other nineteen schedules",
+    "The same video ID has distinct owner metrics, history and events",
+    "Forged internal/workspace headers and user query parameters cannot change gateway owner identity",
+    "Admin and owner MCP tokens both resolve business data in their own namespace",
+    "MCP arguments cannot select another workspace",
+    "Disabling one owner invalidates their sessions and MCP tokens while another owner remains usable",
+    "The twenty-first account is rejected"
+  ],
+  "frontend_fix": {
+    "before": "Responses and upload results from an older session were accepted after an account transition; a delayed 401 could expire the newer session. Auth changes were not synchronized to other tabs.",
+    "after": "Changed sessions discard stale responses and uploads. Login/logout/expiry clears other tabs' cached views and composers through a credential-free storage notification.",
+    "unit_tests": 6,
+    "browser_fixture_checks": {
+      "two_tabs_cleared_on_logout": true,
+      "old_account_items_after_switch": 0,
+      "reloaded_tab_contains_current_owner_only": true,
+      "production_data_used": false,
+      "screenshot": "multi-user-beta-qa.jpg"
+    }
+  },
+  "verification": {
+    "local_worker_tests": 26,
+    "local_worker_engine": "Disposable in-memory PGlite development socket; native concurrency is verified separately in CI",
+    "native_ci_url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44036907711",
+    "native_ci_result": "success",
+    "native_worker_tests": 26,
+    "native_gateway_tests": 6,
+    "frontend_tests": 6,
+    "frontend_build": "passed",
+    "postgres_version": 18,
+    "production_container_health": "passed"
+  },
+  "limits": [
+    "This verifies application users; database/OS operators still have infrastructure access and account administrators retain password reset powers.",
+    "One browser profile shares a session cookie across tabs; simultaneous independent accounts use separate profiles.",
+    "The audit is not a sustained load benchmark or proof of twenty simultaneous Meta publications."
+  ],
+  "live_test_deployment": {
+    "hosting": "GitHub Codespaces",
+    "source_commit": "3bc2753d79d547376b0fc491c8719e94153ea1ad",
+    "health": {
+      "database": true,
+      "ok": true,
+      "worker": true
+    },
+    "new_session_bundle_verified": true,
+    "production_users_modified_by_isolation_tests": false
+  }
+}
