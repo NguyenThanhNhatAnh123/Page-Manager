@@ -230,7 +230,7 @@ async def disconnect(request:Request,cid:int,body:Revision):return ws(request).m
 @app.get('/api/pages')
 async def pages(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200),status:str='',connection_id:int|None=None,removed:bool=False):
     workspace=ws(request)
-    result=workspace.manager.pages(limit=limit,offset=offset,search=search,status=status,connection_id=connection_id,removed=removed)
+    result=workspace.manager.pages(limit=limit,offset=offset,search=search,status=status,connection_id=connection_id,connection_active_only=True,removed=removed)
     summaries=workspace.analytics.page_summaries([page['id'] for page in result['items']])
     result['items']=[{**page,'analytics':summaries[page['id']]} for page in result['items']]
     return result

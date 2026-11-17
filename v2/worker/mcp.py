@@ -119,7 +119,7 @@ def install(app,workspace_for,create_reel,reel_action):
                 if name=='via_status':data={'available':True,'stats':manager.overview()['stats'],'publication_policy':dict(PUBLICATION_POLICY)}
                 elif name=='pages_overview':data=manager.overview(timezone=zone)
                 elif name=='pages_connections':data=manager.connections(limit,offset,search,connected_only=args.get('connected_only',False))
-                elif name=='pages_list':data=manager.pages(limit=limit,offset=offset,search=search,timezone=zone,status=args.get('status',''),connection_id=args.get('connection_id'))
+                elif name=='pages_list':data=manager.pages(limit=limit,offset=offset,search=search,timezone=zone,status=args.get('status',''),connection_id=args.get('connection_id'),connection_active_only=True)
                 elif name=='pages_events':data={'items':store.events(limit,offset),'total':store.event_count()}
                 elif name=='pages_reels_config':
                     from page_manager.reel_assets import MAX_VIDEO_BYTES

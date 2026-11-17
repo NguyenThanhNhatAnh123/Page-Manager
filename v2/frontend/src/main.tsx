@@ -1250,7 +1250,9 @@ function ConnectionForm({
   );
 }
 
-function PageCard({ page, onSelect }: { page: Page; onSelect: () => void }) {
+function PageCard({ page, onSelect, onSource, sourceId }: {
+  page: Page; onSelect: () => void; onSource: (id: number) => void; sourceId: string;
+}) {
   const followers = page.details?.followers_count;
   const followerCount =
     typeof followers === "number" &&
@@ -1259,9 +1261,7 @@ function PageCard({ page, onSelect }: { page: Page; onSelect: () => void }) {
       ? followers
       : null;
   const stats = page.analytics;
-  const sources = page.connections
-    .map((connection) => connection.label)
-    .join(", ");
+  const sources = page.connections.filter((connection) => connection.status !== "disconnected");
   const metrics = [
     {
       label: "Người theo dõi",
@@ -1327,13 +1327,20 @@ function PageCard({ page, onSelect }: { page: Page; onSelect: () => void }) {
         </span>
       </div>
       <div className="page-card-footer">
-        <span
-          className="page-card-source"
-          title={`System User: ${sources || "Chưa có nguồn"}`}
-        >
+        <div className="page-card-source">
           <KeyRound size={13} />
-          <span>{sources || "Chưa có nguồn"}</span>
-        </span>
+          <div className="page-source-links">
+            {sources.length ? sources.map((source) => (
+              <button
+                key={source.id}
+                className={sourceId === String(source.id) ? "selected" : ""}
+                title={`System User: ${source.label}`}
+                aria-label={`Lọc Pages theo ${source.label}`}
+                onClick={() => onSource(source.id)}
+              >{source.label}</button>
+            )) : <span>Chưa có nguồn đang kết nối</span>}
+          </div>
+        </div>
         <div className="page-card-actions">
           <button
             className="icon-button"
@@ -1359,15 +1366,38 @@ function Pages({ user }: { user: User }) {
   const [search, setSearch] = useState(""),
     [offset, setOffset] = useState(0),
     [pageSize, setPageSize] = useState(12),
+    [sourceId, setSourceId] = useState(""),
     [removed, setRemoved] = useState(false),
     [selected, setSelected] = useState<Page>(),
     [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false);
   const client = useQueryClient();
+  const sources = useQuery({
+    queryKey: [user.id, "page-system-users"],
+    queryFn: async ({ signal }) => {
+      const items: Connection[] = [];
+      let offset = 0;
+      while (true) {
+        const page = await api<{ items: Connection[]; total: number }>(
+          `/api/connections?limit=100&offset=${offset}`, { signal },
+        );
+        items.push(...page.items);
+        offset += page.items.length;
+        if (offset >= page.total) return items.filter((source) => source.token_type === "system_user");
+        if (!page.items.length) throw new Error("Chưa tải đủ danh sách System User. Thử lại.");
+      }
+    },
+  });
   const query = useData<{ items: Page[]; total: number }>(
     user,
-    `/api/pages?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(search)}&removed=${removed}`,
+    `/api/pages?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(search)}&removed=${removed}${sourceId ? `&connection_id=${sourceId}` : ""}`,
   );
+  const selectedSource = sources.data?.find((source) => String(source.id) === sourceId);
+  function filterSource(id: string) {
+    setSourceId(id);
+    setOffset(0);
+    setSelected(undefined);
+  }
   async function update(p: Page, value: unknown) {
     setBusy(true);
     try {
@@ -1398,6 +1428,20 @@ function Pages({ user }: { user: User }) {
           placeholder="Tìm tên hoặc ID Page…"
         />
         <div className="toolbar-actions">
+          <select
+            className="page-source-filter"
+            aria-label="Lọc theo System User"
+            value={sourceId}
+            disabled={sources.isPending}
+            onChange={(e) => filterSource(e.target.value)}
+          >
+            <option value="">Tất cả System User</option>
+            {sources.data?.map((source) => (
+              <option key={source.id} value={source.id}>
+                {source.label}{!source.connected ? " · Đã ngắt" : !removed ? ` · ${source.page_count} Page` : ""}
+              </option>
+            ))}
+          </select>
           <select
             aria-label="Số Page mỗi trang"
             value={pageSize}
@@ -1432,6 +1476,12 @@ function Pages({ user }: { user: User }) {
           </div>
         </div>
       </div>
+      {sources.error && <ErrorBox error={sources.error} retry={() => sources.refetch()} />}
+      <div className="pages-source-summary" aria-live="polite">
+        <span><KeyRound size={14} />{selectedSource?.label || (sourceId ? "System User đã chọn" : "Tất cả System User")}</span>
+        <small>Một Page có thể thuộc nhiều System User.</small>
+        {sourceId && <button className="text-button" onClick={() => filterSource("")}><X size={14} />Bỏ lọc nguồn</button>}
+      </div>
       {error != null && <ErrorBox error={error} />}{" "}
       {query.isPending ? (
         <Loading />
@@ -1445,6 +1495,8 @@ function Pages({ user }: { user: User }) {
                 key={page.id}
                 page={page}
                 onSelect={() => setSelected(page)}
+                onSource={(id) => filterSource(String(id))}
+                sourceId={sourceId}
               />
             ))}
           </div>
@@ -1463,6 +1515,8 @@ function Pages({ user }: { user: User }) {
           title={
             search
               ? "Không tìm thấy Page"
+              : sourceId
+                ? "System User này chưa có Page phù hợp"
               : removed
                 ? "Chưa có Page đã gỡ"
                 : "Kho Page đang trống"
@@ -1470,6 +1524,8 @@ function Pages({ user }: { user: User }) {
           description={
             search
               ? "Thử tìm bằng tên hoặc ID Page khác."
+              : sourceId
+                ? "Thử chọn nguồn khác hoặc bỏ lọc nguồn."
               : removed
                 ? "Các Page đã gỡ có thể được khôi phục tại đây."
                 : "Vào Kết nối, thêm token System User và đồng bộ Pages để bắt đầu."

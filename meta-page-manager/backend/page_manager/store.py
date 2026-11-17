@@ -276,7 +276,7 @@ class Store:
             FROM pages p) """
         return sql,[start,end,start,end,start]
 
-    def catalog_window(self,start,end,*,connection_id=None,search='',status='',information_status='',today='',page_id=None,limit=None,offset=0,posting_eligible_only=False,removed=False):
+    def catalog_window(self,start,end,*,connection_id=None,connection_active_only=False,search='',status='',information_status='',today='',page_id=None,limit=None,offset=0,posting_eligible_only=False,removed=False):
         prefix,params=self._page_summary(start,end);conditions=[]
         history="(EXISTS(SELECT 1 FROM page_edits ie WHERE ie.page_id=s.id AND ie.outcome='accepted') OR EXISTS(SELECT 1 FROM chrome_page_setup_receipts ce WHERE ce.page_id=s.id))"
         changed="(CASE WHEN s.information_status_override IS NULL THEN "+history+" ELSE s.information_status_override='updated' END)"
@@ -287,7 +287,8 @@ class Store:
         if type(posting_eligible_only) is not bool:
             raise AppError('Bộ lọc Page đủ điều kiện chưa hợp lệ.','invalid_posting_eligibility_filter',422)
         if connection_id is not None:
-            conditions.append(f'EXISTS(SELECT 1 FROM connection_pages cp JOIN connections c ON c.id=cp.connection_id WHERE cp.page_id=s.id AND c.id=? AND (NOT ({SCOPED_USER}) OR ({ACTIVE_PAGE_LINK})))')
+            link_condition=ACTIVE_PAGE_LINK if connection_active_only else f'(NOT ({SCOPED_USER}) OR ({ACTIVE_PAGE_LINK}))'
+            conditions.append(f'EXISTS(SELECT 1 FROM connection_pages cp JOIN connections c ON c.id=cp.connection_id WHERE cp.page_id=s.id AND c.id=? AND ({link_condition}))')
             params.append(connection_id)
         query=str(search or '').strip().casefold()
         if query:conditions.append('(instr(casefold(s.name),?)>0 OR instr(s.id,?)>0)');params.extend((query,query))

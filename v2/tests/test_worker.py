@@ -489,3 +489,55 @@ async def test_worker_rejects_missing_forged_and_invalid_owner_authentication(ru
         for owner in ('',str(uuid4()),'../../'+owners[0],owners[0].upper()):
             response=await client.get('/api/connections',headers={'x-pm-workspace':owner,'x-pm-internal':os.environ['PM_INTERNAL_KEY']})
             assert response.status_code==403
+
+
+async def test_system_user_page_groups_keep_pagination_overlap_and_owner_scope(runtime,monkeypatch):
+    from worker import app as module
+    from page_manager.inputs import ConnectionInput
+    registry,app,owners=runtime
+    monkeypatch.setattr(module,'registry',registry)
+    workspace,foreign=(registry.get(owner) for owner in owners[14:16])
+    manager=workspace.manager
+    source_b=manager.save_connection(ConnectionInput(label='Group B',token_type='system_user',token='FakeGroupBToken'))['id']
+    foreign_id=foreign.manager.save_connection(ConnectionInput(label='Foreign group',token_type='system_user',token='FakeForeignGroupToken'))['id']
+    assert source_b==foreign_id
+    def sync(manager,cid,items):
+        source=manager.store.connection(cid)
+        manager.store.sync(cid,source['token_revision'],[
+            {'id':pid,'name':name,'sources':['assigned_pages'],'tasks':['ANALYZE'],
+             'encrypted_page_token':manager.secrets.encrypt('FakeGroupPageToken')} for pid,name in items
+        ],True,'working',None,{'id':'777'})
+    sync(manager,1,[('555','Shared Page'),('990081','A only'),('990084','Old A Page')])
+    sync(manager,source_b,[('555','Shared Page'),('990082','B only')])
+    sync(manager,1,[('555','Shared Page'),('990081','A only')])
+    sync(foreign.manager,foreign_id,[('990083','Foreign Page')])
+    headers={'x-pm-internal':os.environ['PM_INTERNAL_KEY'],'x-pm-workspace':workspace.owner,'x-pm-capability':'read'}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
+        first=(await client.get('/api/pages',params={'connection_id':1,'limit':1,'offset':0},headers=headers)).json()
+        second=(await client.get('/api/pages',params={'connection_id':1,'limit':1,'offset':1},headers=headers)).json()
+        assert first['total']==second['total']==2
+        assert {first['items'][0]['id'],second['items'][0]['id']}=={'555','990081'}
+        group_b=(await client.get('/api/pages',params={'connection_id':source_b},headers=headers)).json()
+        assert group_b['total']==2 and {row['id'] for row in group_b['items']}=={'555','990082'}
+        shared=next(row for row in group_b['items'] if row['id']=='555')
+        assert {row['id'] for row in shared['connections'] if row['status']!='disconnected'}=={1,source_b}
+        all_pages=(await client.get('/api/pages',headers=headers)).json()
+        assert len({row['id'] for row in all_pages['items']})==all_pages['total']==4
+        found=(await client.get('/api/pages',params={'connection_id':source_b,'search':'Shared'},headers=headers)).json()
+        assert found['total']==1 and found['items'][0]['id']=='555'
+        assert (await client.get('/api/pages',params={'connection_id':source_b,'search':'A only'},headers=headers)).json()['total']==0
+        manager.manage_page('555',shared['management_revision'],removed=True)
+        assert (await client.get('/api/pages',params={'connection_id':1},headers=headers)).json()['total']==1
+        removed=(await client.get('/api/pages',params={'connection_id':1,'removed':True},headers=headers)).json()
+        assert removed['total']==1 and removed['items'][0]['id']=='555'
+        manager.manage_page('555',removed['items'][0]['management_revision'],removed=False)
+        async def mcp_pages():
+            response=await client.post('/mcp',headers=headers,json={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'pages_list','arguments':{'connection_id':source_b}}})
+            result=response.json()['result'];assert not result['isError']
+            return json.loads(result['content'][0]['text'])
+        assert {row['id'] for row in (await mcp_pages())['items']}=={'555','990082'}
+        manager.disconnect(source_b,manager.connection_public(manager.store.connection(source_b))['revision'])
+        assert (await client.get('/api/pages',params={'connection_id':source_b},headers=headers)).json()['total']==0
+        assert (await mcp_pages())['total']==0
+        # The legacy catalog keeps its historical-link default.
+        assert len(manager.pages(connection_id=source_b)['items'])==2

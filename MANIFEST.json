@@ -265,13 +265,13 @@
     },
     {
       "path": "meta-page-manager/backend/page_manager/service.py",
-      "bytes": 30843,
-      "sha256": "c88d662f7b6e799cb11c9aaa61ddb740f67b9cef787411a968a8eef251b264dc"
+      "bytes": 30918,
+      "sha256": "134f3184e1154651981d951329155ae232d4ea8da75047973f813a820f751cc7"
     },
     {
       "path": "meta-page-manager/backend/page_manager/store.py",
-      "bytes": 58647,
-      "sha256": "b45be456ecca3045ae212902fb002e0b443dadba9943e1c010372cb619c97ca0"
+      "bytes": 58773,
+      "sha256": "74135bc86d35be3085a56e6d55a77c3f7bfe5c93404a605b6829c0105a583f1e"
     },
     {
       "path": "meta-page-manager/backend/page_manager/telegram_approval.py",
@@ -1195,13 +1195,13 @@
     },
     {
       "path": "v2/frontend/src/main.tsx",
-      "bytes": 106920,
-      "sha256": "da35f63b8777da3ef3871f7d601b2aace1ee63d565164e3eca7e0de6c14cb5ea"
+      "bytes": 109700,
+      "sha256": "e5eca09fbd3a847e51801b5b3f098e2f1bd4ba44ac45487724c9bf83b6532f8c"
     },
     {
       "path": "v2/frontend/src/reference-theme.css",
-      "bytes": 33413,
-      "sha256": "3089ee93627c36c4f3946b626ca0e35109c59b3355246400fcaf92818a5e0ba0"
+      "bytes": 34614,
+      "sha256": "4202fc0a51107be0b0790077add1bb956683a5897729fcc208e2d100c6f97605"
     },
     {
       "path": "v2/frontend/src/styles.css",
@@ -1450,8 +1450,8 @@
     },
     {
       "path": "v2/tests/test_worker.py",
-      "bytes": 33457,
-      "sha256": "77bd494cacf771c455414807f678dd303e7706be544a7627feb8290f00936f1a"
+      "bytes": 37622,
+      "sha256": "c6c4b8f839bfd7eecda3226e58a904d8c5c1041de7b25432b9b355c06b2aa8ed"
     },
     {
       "path": "v2/worker/__init__.py",
@@ -1470,13 +1470,13 @@
     },
     {
       "path": "v2/worker/app.py",
-      "bytes": 22531,
-      "sha256": "1b1e9bbb8d9015a7f5e2601a8bfdcfc2868c1ed0a8dd90bf3c53131026944bf5"
+      "bytes": 22559,
+      "sha256": "bfad4636f36409af8e1a7fad89520c9ce8e6098d8c6eef46420a87156f13d2ca"
     },
     {
       "path": "v2/worker/mcp.py",
-      "bytes": 16283,
-      "sha256": "bb5335f208c608afde95340effde2da513cd57e1ab34ba9eed6b4ff2b78d6d69"
+      "bytes": 16311,
+      "sha256": "1464f41972e5912e6ad7dbb02687be4adbfe12db90c4c6f291f93329bf8b1f17"
     },
     {
       "path": "v2/worker/publication.py",

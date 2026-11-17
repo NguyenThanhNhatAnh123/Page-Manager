@@ -205,8 +205,8 @@ class PageManager:
                 'posts_today_complete':bool(page['posts_today_complete']),'posts_checked_at':page['posts_checked_at']})
         return result,total
 
-    def pages(self,*,connection_id=None,search='',status='',information_status='',timezone='America/Los_Angeles',today='',limit=None,offset=0,posting_eligible_only=False,removed=False):
-        values,total=self._pages(timezone,connection_id=connection_id,search=search,status=status,information_status=information_status,today=today,limit=limit,offset=offset,posting_eligible_only=posting_eligible_only,removed=removed)
+    def pages(self,*,connection_id=None,connection_active_only=False,search='',status='',information_status='',timezone='America/Los_Angeles',today='',limit=None,offset=0,posting_eligible_only=False,removed=False):
+        values,total=self._pages(timezone,connection_id=connection_id,connection_active_only=connection_active_only,search=search,status=status,information_status=information_status,today=today,limit=limit,offset=offset,posting_eligible_only=posting_eligible_only,removed=removed)
         result={'items':values}
         if limit is not None:result.update(total=total,limit=limit,offset=offset)
         return result

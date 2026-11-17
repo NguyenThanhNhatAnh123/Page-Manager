@@ -823,6 +823,61 @@ td.numeric {
 .pages-toolbar .toolbar-actions > select {
   padding-right: 34px;
 }
+.pages-toolbar .page-source-filter {
+  width: 240px;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+.pages-source-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: -8px 0 20px;
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+.pages-source-summary > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.pages-source-summary small {
+  font-size: inherit;
+}
+.pages-source-summary .text-button {
+  margin-left: auto;
+  font-size: inherit;
+}
+.page-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.page-source-links button {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 24px;
+  border: 0;
+  border-radius: 7px;
+  padding: 3px 5px;
+  color: var(--muted);
+  background: transparent;
+  font-size: var(--text-caption);
+  font-weight: 400;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.page-source-links button:hover:not(:disabled),
+.page-source-links button.selected {
+  color: var(--ink);
+  background: var(--surface-2);
+}
 .pages-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1079,6 +1134,10 @@ button.page-card-identity:hover strong {
   .pages-toolbar .toolbar-actions {
     width: 100%;
     justify-content: space-between;
+  }
+  .pages-toolbar .page-source-filter {
+    flex-basis: 100%;
+    width: 100%;
   }
 }
 .asset-card {
