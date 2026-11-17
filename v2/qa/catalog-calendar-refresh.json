@@ -6,7 +6,7 @@
     "frontend_build": "passed",
     "frontend_session_tests": 6,
     "worker_tests": 29,
-    "worker_database": "disposable localhost PGlite; PostgreSQL CI pending",
+    "worker_database": "disposable localhost PGlite and PostgreSQL 18 in Linux CI",
     "related_legacy_tests": 52,
     "browser": [
       "System User cards and source-specific detail pagination",
@@ -22,5 +22,20 @@
   "isolation": "new endpoints checked with a different owner; foreign records absent",
   "fixtures": "fake System Users, Pages, jobs and metrics only",
   "meta_mutations_during_qa": false,
-  "live_deployment": "pending"
+  "linux_ci": {
+    "url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44056568228",
+    "source_commit": "e112e9a396f8728584086b0d632cda62386181a9",
+    "result": "success",
+    "checks": ["Rust build", "29 worker tests with PostgreSQL 18", "6 frontend session tests and build", "6 gateway tests including 20 sessions", "production container health", "Codespaces image build"]
+  },
+  "live_deployment": {
+    "hosting": "existing GitHub Codespace",
+    "health": {"database": true, "worker": true},
+    "new_frontend_bundle": true,
+    "calendar_grouping_and_pagination": true,
+    "global_page_ranking_both_metrics": true,
+    "content_bands_and_default_ranking": true,
+    "existing_publications_preserved": 32,
+    "verification": "read-only API and bundle checks against the existing admin workspace; no Meta content writes"
+  }
 }

@@ -94,6 +94,8 @@ Lịch đăng mặc định hiển thị các nguồn System User, dùng tên Me
 
 Ảnh QA trong `qa/calendar-*.jpg`, `qa/analytics-*.jpg` và `qa/pages-sort-mobile.jpg` dùng dữ liệu giả trong database thử riêng, không phải tên Page/token/số liệu thật. Xem `qa/catalog-calendar-refresh.json` để biết phạm vi kiểm tra.
 
+Bản cập nhật này đã qua [CI Linux với PostgreSQL 18](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44056568228) và được triển khai trên Codespaces. Kiểm tra chỉ đọc xác nhận phân nhóm lịch, hai cách sắp xếp Page, nhóm lượt xem và bundle FE mới; 32 lịch đã hoàn tất trước cập nhật vẫn giữ nguyên Page, request UUID, video ID và trạng thái.
+
 ```powershell
 $env:PM_TEST_DATABASE_URL = 'postgresql://testuser:testpassword@127.0.0.1:5432/pagemanager_test'
 .\.venv\Scripts\python.exe -m pytest tests -q
