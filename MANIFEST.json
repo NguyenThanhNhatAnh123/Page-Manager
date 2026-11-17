@@ -15,8 +15,8 @@
     },
     {
       "path": ".github/workflows/v2.yml",
-      "bytes": 2086,
-      "sha256": "4dd6a60765709be2b06498ef1b69148e129537db8ff87825f584219269138b23"
+      "bytes": 2717,
+      "sha256": "a1a5a04fc79811652f6fbca1741712c5311962dfb637e6202dcebf9037dcb8ea"
     },
     {
       "path": ".gitignore",
@@ -1220,8 +1220,8 @@
     },
     {
       "path": "v2/gateway/src/main.rs",
-      "bytes": 25199,
-      "sha256": "c962c62031d1bb2ee56f1b3977fa0ede3a0b6b72d138a140f58e67a5ff8edbe3"
+      "bytes": 25404,
+      "sha256": "a7fcd42abc0c50f0f29fcbdf5ab69de26b0291f05ddc8d839ac9dd530387608a"
     },
     {
       "path": "v2/migrations/001.sql",

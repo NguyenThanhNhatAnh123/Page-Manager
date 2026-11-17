@@ -1,6 +1,6 @@
 use std::{env, net::SocketAddr, sync::Arc, time::Duration};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::SaltString};
-use axum::{Router, body::{Body, to_bytes}, extract::{Request, State}, http::{HeaderValue, Method, StatusCode, header}, response::{IntoResponse, Response}, routing::{any, get, post}};
+use axum::{Router, body::{Body, to_bytes}, extract::{Request, State}, http::{HeaderMap, HeaderValue, Method, StatusCode, header}, response::{IntoResponse, Response}, routing::{any, get, post}};
 use rand::{RngCore, rngs::OsRng};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -23,8 +23,8 @@ fn fail(status:StatusCode,message:&str)->Failure {(status,axum::Json(json!({"det
 fn db_error(_:sqlx::Error)->Failure {fail(StatusCode::SERVICE_UNAVAILABLE,"Chưa kết nối được cơ sở dữ liệu.")}
 fn secret()->String {let mut bytes=[0u8;32];OsRng.fill_bytes(&mut bytes);bytes.iter().map(|b|format!("{b:02x}")).collect()}
 fn digest(value:&str)->String {format!("{:x}",Sha256::digest(value.as_bytes()))}
-fn cookie(req:&Request)->Option<String> {req.headers().get(header::COOKIE)?.to_str().ok()?.split(';').find_map(|part|part.trim().strip_prefix("pm_session=").map(str::to_owned))}
-fn origin_ok(app:&App,req:&Request)->bool {req.headers().get(header::ORIGIN).and_then(|v|v.to_str().ok())==Some(app.origin.as_str())}
+fn cookie(headers:&HeaderMap)->Option<String> {headers.get(header::COOKIE)?.to_str().ok()?.split(';').find_map(|part|part.trim().strip_prefix("pm_session=").map(str::to_owned))}
+fn origin_ok(app:&App,headers:&HeaderMap)->bool {headers.get(header::ORIGIN).and_then(|v|v.to_str().ok())==Some(app.origin.as_str())}
 fn cookie_header(app:&App,value:&str,age:u32)->HeaderValue {HeaderValue::from_str(&format!("pm_session={value}; Path=/; HttpOnly; SameSite=Strict; Max-Age={age}{}",if app.secure{"; Secure"}else{""})).unwrap()}
 
 async fn body_json(req:Request)->Result<Value,Failure> {
@@ -32,21 +32,22 @@ async fn body_json(req:Request)->Result<Value,Failure> {
  serde_json::from_slice(&bytes).map_err(|_|fail(StatusCode::BAD_REQUEST,"Dữ liệu không hợp lệ."))
 }
 
-async fn actor(app:&App,req:&Request)->Result<Actor,Failure> {
- if let Some(token)=req.headers().get(header::AUTHORIZATION).and_then(|v|v.to_str().ok()).and_then(|v|v.strip_prefix("Bearer ")) {
+// Body is Send but not Sync; borrow only Sync request metadata across DB awaits.
+async fn actor(app:&App,headers:&HeaderMap,method:&Method)->Result<Actor,Failure> {
+ if let Some(token)=headers.get(header::AUTHORIZATION).and_then(|v|v.to_str().ok()).and_then(|v|v.strip_prefix("Bearer ")) {
   if token.len()>128 {return Err(fail(StatusCode::UNAUTHORIZED,"MCP token không hợp lệ."))}
   let row=sqlx::query("SELECT u.id,u.username,u.role,u.must_change,u.timezone,t.can_write FROM pm_mcp_tokens t JOIN pm_users u ON u.id=t.user_id WHERE t.digest=$1 AND t.revoked_at IS NULL AND t.expires_at>now() AND u.active AND NOT u.must_change")
     .bind(digest(token)).fetch_optional(&app.db).await.map_err(db_error)?.ok_or_else(||fail(StatusCode::UNAUTHORIZED,"MCP token hết hạn hoặc đã thu hồi."))?;
   sqlx::query("UPDATE pm_mcp_tokens SET last_used_at=now() WHERE digest=$1").bind(digest(token)).execute(&app.db).await.map_err(db_error)?;
   return Ok(Actor{id:row.get("id"),username:row.get("username"),role:row.get("role"),must_change:row.get("must_change"),timezone:row.get("timezone"),csrf:String::new(),mcp:true,can_write:row.get("can_write")});
  }
- let token=cookie(req).filter(|s|s.len()==64).ok_or_else(||fail(StatusCode::UNAUTHORIZED,"Đăng nhập để tiếp tục."))?;
+ let token=cookie(headers).filter(|s|s.len()==64).ok_or_else(||fail(StatusCode::UNAUTHORIZED,"Đăng nhập để tiếp tục."))?;
  let row=sqlx::query("SELECT u.id,u.username,u.role,u.must_change,u.timezone,s.csrf FROM pm_sessions s JOIN pm_users u ON u.id=s.user_id WHERE s.digest=$1 AND s.expires_at>now() AND s.last_seen>now()-interval '30 minutes' AND u.active")
   .bind(digest(&token)).fetch_optional(&app.db).await.map_err(db_error)?.ok_or_else(||fail(StatusCode::UNAUTHORIZED,"Phiên đăng nhập đã hết hạn."))?;
  let a=Actor{id:row.get("id"),username:row.get("username"),role:row.get("role"),must_change:row.get("must_change"),timezone:row.get("timezone"),csrf:row.get("csrf"),mcp:false,can_write:true};
- if req.method()!=Method::GET && req.method()!=Method::HEAD {
-  let supplied=req.headers().get("x-csrf-token").and_then(|v|v.to_str().ok()).unwrap_or("");
-  if !origin_ok(app,req)||!bool::from(supplied.as_bytes().ct_eq(a.csrf.as_bytes())) {return Err(fail(StatusCode::FORBIDDEN,"Phiên thao tác không hợp lệ. Tải lại trang."))}
+ if method!=Method::GET && method!=Method::HEAD {
+  let supplied=headers.get("x-csrf-token").and_then(|v|v.to_str().ok()).unwrap_or("");
+  if !origin_ok(app,headers)||!bool::from(supplied.as_bytes().ct_eq(a.csrf.as_bytes())) {return Err(fail(StatusCode::FORBIDDEN,"Phiên thao tác không hợp lệ. Tải lại trang."))}
  }
  sqlx::query("UPDATE pm_sessions SET last_seen=now() WHERE digest=$1").bind(digest(&token)).execute(&app.db).await.map_err(db_error)?;
  Ok(a)
@@ -64,7 +65,7 @@ async fn new_session(app:&App,id:&str,expected:&str)->Result<(String,String),Fai
 }
 
 async fn login(State(app):State<App>,req:Request)->Result<Response,Failure> {
- if !origin_ok(&app,&req) {return Err(fail(StatusCode::FORBIDDEN,"Nguồn đăng nhập không hợp lệ."))}
+ if !origin_ok(&app,req.headers()) {return Err(fail(StatusCode::FORBIDDEN,"Nguồn đăng nhập không hợp lệ."))}
  let peer=req.extensions().get::<axum::extract::ConnectInfo<SocketAddr>>().map(|v|v.0.ip().to_string()).unwrap_or_default();
  let value=body_json(req).await?;
  let username=value["username"].as_str().unwrap_or("").to_ascii_lowercase();let password=value["password"].as_str().unwrap_or("").to_owned();
@@ -90,12 +91,12 @@ async fn login(State(app):State<App>,req:Request)->Result<Response,Failure> {
 }
 
 async fn auth_routes(State(app):State<App>,req:Request)->Result<Response,Failure> {
- let a=actor(&app,&req).await?;
+ let a=actor(&app,req.headers(),req.method()).await?;
  if a.mcp {return Err(fail(StatusCode::FORBIDDEN,"Dùng phiên đăng nhập để quản lý tài khoản."))}
  let path=req.uri().path().to_owned();
  if path=="/api/auth/me"&&req.method()==Method::GET {return Ok(axum::Json(json!({"user":a.public()})).into_response())}
  if path=="/api/auth/logout"&&req.method()==Method::POST {
-  if let Some(raw)=cookie(&req) {sqlx::query("DELETE FROM pm_sessions WHERE digest=$1").bind(digest(&raw)).execute(&app.db).await.map_err(db_error)?;}
+  if let Some(raw)=cookie(req.headers()) {sqlx::query("DELETE FROM pm_sessions WHERE digest=$1").bind(digest(&raw)).execute(&app.db).await.map_err(db_error)?;}
   let mut r=axum::Json(json!({"ok":true})).into_response();r.headers_mut().insert(header::SET_COOKIE,cookie_header(&app,"",0));return Ok(r)
  }
  if path!="/api/auth/password"||req.method()!=Method::POST {return Err(fail(StatusCode::NOT_FOUND,"Không có chức năng này."))}
@@ -116,7 +117,7 @@ async fn auth_routes(State(app):State<App>,req:Request)->Result<Response,Failure
 }
 
 async fn account(State(app):State<App>,req:Request)->Result<Response,Failure> {
- let a=actor(&app,&req).await?;
+ let a=actor(&app,req.headers(),req.method()).await?;
  if a.mcp||a.must_change {return Err(fail(StatusCode::FORBIDDEN,"Đăng nhập và đổi mật khẩu trước khi quản lý MCP token."))}
  let path=req.uri().path().to_owned();let method=req.method().clone();
  if method==Method::GET {
@@ -147,7 +148,7 @@ async fn account(State(app):State<App>,req:Request)->Result<Response,Failure> {
 }
 
 async fn admin(State(app):State<App>,req:Request)->Result<Response,Failure> {
- let a=actor(&app,&req).await?;
+ let a=actor(&app,req.headers(),req.method()).await?;
  if a.mcp||a.must_change||a.role!="admin" {return Err(fail(StatusCode::FORBIDDEN,"Chỉ quản trị viên được quản lý tài khoản."))}
  if req.method()==Method::GET {
   let rows=sqlx::query("SELECT id,username,role,active,must_change,timezone FROM pm_users ORDER BY username").fetch_all(&app.db).await.map_err(db_error)?;
@@ -171,7 +172,7 @@ async fn admin(State(app):State<App>,req:Request)->Result<Response,Failure> {
 }
 
 async fn proxy(State(app):State<App>,req:Request)->Result<Response,Failure> {
- let a=actor(&app,&req).await?;let path=req.uri().path().to_owned();
+ let a=actor(&app,req.headers(),req.method()).await?;let path=req.uri().path().to_owned();
  if a.must_change {return Err(fail(StatusCode::FORBIDDEN,"Đổi mật khẩu ban đầu trước khi dùng kho."))}
  if path=="/mcp"&&!a.mcp {return Err(fail(StatusCode::UNAUTHORIZED,"Dùng MCP token cá nhân để kết nối Codex hoặc Claude."))}
  if a.mcp&&path!="/mcp"&&req.method()!=Method::GET&&!a.can_write {return Err(fail(StatusCode::FORBIDDEN,"MCP token chỉ có quyền đọc."))}

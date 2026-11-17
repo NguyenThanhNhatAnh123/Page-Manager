@@ -3,9 +3,10 @@ on: [push, pull_request]
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18
         env:
           POSTGRES_DB: pagemanager_test
           POSTGRES_USER: testuser
@@ -29,6 +30,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - uses: dtolnay/rust-toolchain@stable
+        with: {toolchain: '1.90.0'}
       - run: pip install -r requirements.txt
       - run: python -m pytest tests/test_worker.py -q
       - run: cargo build --locked --manifest-path gateway/Cargo.toml
@@ -46,3 +48,12 @@ jobs:
             sleep 1
           done
           PM_TEST_GATEWAY_URL=http://127.0.0.1:8020 python -m pytest tests/test_gateway.py -q
+      - name: Verify production containers with fresh PostgreSQL 18
+        env:
+          POSTGRES_PASSWORD: ci-disposable-container-password-only
+        run: |
+          trap 'docker compose --project-name pm-v2-ci down --volumes' EXIT
+          docker compose --project-name pm-v2-ci up -d --build --wait --wait-timeout 300
+          curl --fail --silent http://127.0.0.1:8020/healthz
+          ACCOUNTS=$(docker compose --project-name pm-v2-ci exec -T postgres psql -U pagemanager -d pagemanager -tAc 'SELECT COUNT(*) FROM pm_users')
+          test "$ACCOUNTS" = 20
