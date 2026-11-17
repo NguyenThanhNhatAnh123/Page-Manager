@@ -84,6 +84,16 @@ Chọn **Lọc theo System User** để xem từng nhóm, hoặc bấm tên ngu�
 
 ## Kiểm thử
 
+### Danh sách và lịch theo System User
+
+Lịch đăng mặc định hiển thị các nguồn System User, dùng tên Meta khi có và nhãn nguồn làm thông tin phụ. Chọn nguồn để mở lịch riêng, phân trang 12 mục. Bộ lọc tháng/trạng thái áp dụng ở máy chủ; tuần dùng khoảng ngày theo múi giờ từng lịch, gồm cả ngày thuộc tháng liền kề. Ô ngày chỉ mở tối đa ba lịch trên trang đang xem, có lối mở danh sách ngày khi cần.
+
+`GET /api/reels/groups` phân trang các nguồn và tổng hợp trạng thái trong tháng. `GET /api/pages?sort=views_desc|followers_desc|name` xếp toàn bộ tập kết quả trước khi phân trang; giá trị thiếu xuống cuối, các trường phụ và ID giữ thứ tự ổn định. Kho và phạm vi kết nối vẫn lấy từ người dùng đã xác thực.
+
+`GET /api/analytics?sort=views_desc|recent&band=all|under_10k|10k|50k|100k|unknown` áp dụng thứ tự và nhóm trước khi phân trang. Nhóm 10k là `[10.000,50.000)`, 50k là `[50.000,100.000)`, 100k là từ 100.000; NULL có nhóm riêng. Các nhóm không chồng lặp, dùng giá trị đọc được gần nhất. Lượt xem trong giao diện vẫn là lượt phát gồm phát lại theo Meta, không phải người xem duy nhất.
+
+Ảnh QA trong `qa/calendar-*.jpg`, `qa/analytics-*.jpg` và `qa/pages-sort-mobile.jpg` dùng dữ liệu giả trong database thử riêng, không phải tên Page/token/số liệu thật. Xem `qa/catalog-calendar-refresh.json` để biết phạm vi kiểm tra.
+
 ```powershell
 $env:PM_TEST_DATABASE_URL = 'postgresql://testuser:testpassword@127.0.0.1:5432/pagemanager_test'
 .\.venv\Scripts\python.exe -m pytest tests -q

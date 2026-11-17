@@ -58,6 +58,7 @@ export type Job = {
   page_name: string;
   page_id: string;
   connection_label: string;
+  connection_id: number;
   asset_name: string;
   caption: string;
   status: string;
@@ -99,6 +100,7 @@ export type Sync = {
 export type Analytics = {
   items: Reel[];
   total: number;
+  bands: Record<string, number>;
   totals: {
     tracked: number;
     views_known: number;

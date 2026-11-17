@@ -276,7 +276,7 @@ class Store:
             FROM pages p) """
         return sql,[start,end,start,end,start]
 
-    def catalog_window(self,start,end,*,connection_id=None,connection_active_only=False,search='',status='',information_status='',today='',page_id=None,limit=None,offset=0,posting_eligible_only=False,removed=False):
+    def catalog_window(self,start,end,*,connection_id=None,connection_active_only=False,search='',status='',information_status='',today='',page_id=None,page_ids=None,limit=None,offset=0,posting_eligible_only=False,removed=False):
         prefix,params=self._page_summary(start,end);conditions=[]
         history="(EXISTS(SELECT 1 FROM page_edits ie WHERE ie.page_id=s.id AND ie.outcome='accepted') OR EXISTS(SELECT 1 FROM chrome_page_setup_receipts ce WHERE ce.page_id=s.id))"
         changed="(CASE WHEN s.information_status_override IS NULL THEN "+history+" ELSE s.information_status_override='updated' END)"
@@ -297,6 +297,9 @@ class Store:
         if posting_eligible_only:
             conditions.extend((changed,'s.removed_at IS NULL',"length(s.id) BETWEEN 1 AND 32 AND substr(s.id,1,1) BETWEEN '1' AND '9' AND s.id NOT GLOB '*[^0-9]*'"))
         if page_id is not None:conditions.append('s.id=?');params.append(page_id)
+        if page_ids is not None:
+            conditions.append('s.id IN ('+','.join('?' for _ in page_ids)+')' if page_ids else '1=0')
+            params.extend(page_ids)
         if today=='posted':conditions.append('s.posts_today>0')
         elif today=='zero':conditions.append('s.posts_today=0 AND s.posts_today_complete=1')
         elif today=='unknown':conditions.append('(s.posts_today IS NULL OR s.posts_today_complete=0)')
@@ -574,9 +577,16 @@ class Store:
     def reel_job_by_request(self,request_id):
         with self.connect() as db:return self._reel_row(db.execute('SELECT * FROM reel_jobs WHERE request_id=?',(str(request_id),)).fetchone())
 
-    def reel_job_page(self,limit=12,offset=0,search='',status='all',request_id=None,calendar='',sort='recent',*,page_id=None,connection_id=None):
+    def reel_job_page(self,limit=12,offset=0,search='',status='all',request_id=None,calendar='',sort='recent',*,page_id=None,connection_id=None,date_from='',date_to=''):
         try:validate_calendar(calendar);validate_sort(sort)
         except ValueError:raise AppError('Bộ lọc ngày hoặc cách sắp xếp lịch chưa hợp lệ.','invalid_reel_calendar',422) from None
+        for bound in (date_from,date_to):
+            if bound:
+                try:
+                    validate_calendar(bound)
+                    if len(bound)!=10:raise ValueError()
+                except ValueError:raise AppError('Khoảng ngày lịch chưa hợp lệ.','invalid_reel_calendar',422) from None
+        if date_from and date_to and date_from>date_to:raise AppError('Khoảng ngày lịch chưa hợp lệ.','invalid_reel_calendar',422)
         limit,offset=self._list_window(limit,offset)
         where,params=['archived_at IS NULL'],[]
         if search:
@@ -589,12 +599,14 @@ class Store:
         if connection_id is not None:where.append('connection_id=?');params.append(connection_id)
         if calendar:
             where.append('substr(reel_local_date(scheduled_at,timezone),1,?)=?');params.extend((len(calendar),calendar))
+        if date_from:where.append('reel_local_date(scheduled_at,timezone)>=?');params.append(date_from)
+        if date_to:where.append('reel_local_date(scheduled_at,timezone)<=?');params.append(date_to)
         clause=' WHERE '+' AND '.join(where)
         ordering={'recent':'id DESC','scheduled_asc':'julianday(scheduled_at) IS NULL,julianday(scheduled_at) ASC,id ASC',
                   'scheduled_desc':'julianday(scheduled_at) IS NULL,julianday(scheduled_at) DESC,id DESC'}[sort]
         with self.connect() as db:
             db.create_function('fold_text',1,lambda value:str(value or '').casefold(),deterministic=True)
-            if calendar:db.create_function('reel_local_date',2,local_date_key,deterministic=True)
+            if calendar or date_from or date_to:db.create_function('reel_local_date',2,local_date_key,deterministic=True)
             total=db.execute('SELECT COUNT(*) FROM reel_jobs'+clause,params).fetchone()[0]
             rows=[self._reel_row(row) for row in db.execute('SELECT * FROM reel_jobs'+clause+' ORDER BY '+ordering+' LIMIT ? OFFSET ?',(*params,limit,offset))]
             ids=list({row['asset_id'] for row in rows})

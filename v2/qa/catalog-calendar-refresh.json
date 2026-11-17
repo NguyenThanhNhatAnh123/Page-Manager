@@ -1,0 +1,26 @@
+{
+  "date": "2026-11-17",
+  "timezone": "America/Los_Angeles",
+  "scope": ["calendar System User groups", "global Page ranking", "content view bands", "custom month and select controls"],
+  "local_checks": {
+    "frontend_build": "passed",
+    "frontend_session_tests": 6,
+    "worker_tests": 29,
+    "worker_database": "disposable localhost PGlite; PostgreSQL CI pending",
+    "related_legacy_tests": 52,
+    "browser": [
+      "System User cards and source-specific detail pagination",
+      "keyboard status selection: Home, ArrowDown, Enter",
+      "custom month popup on desktop and 390px viewport",
+      "default Page ranking and follower sort",
+      "100k+ content filter, exact counts and missing-data band",
+      "390px content viewport has no document horizontal overflow"
+    ]
+  },
+  "boundaries": [0, 9999, 10000, 49999, 50000, 99999, 100000, 700000, null],
+  "pagination": "ranking and band filtering happen in the owner database before LIMIT/OFFSET",
+  "isolation": "new endpoints checked with a different owner; foreign records absent",
+  "fixtures": "fake System Users, Pages, jobs and metrics only",
+  "meta_mutations_during_qa": false,
+  "live_deployment": "pending"
+}

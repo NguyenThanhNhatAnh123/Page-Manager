@@ -64,6 +64,8 @@ import {
 import "@fontsource-variable/inter/wght.css";
 import "./styles.css";
 import "./reference-theme.css";
+import { Dropdown, MonthPicker } from "./controls";
+import "./catalog-theme.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -487,6 +489,51 @@ function ReelHistory({
     </Modal>
   );
 }
+const reelBands = [
+  ["all", "Tất cả"],
+  ["100k", "100k+"],
+  ["50k", "50k–100k"],
+  ["10k", "10k–50k"],
+  ["under_10k", "Dưới 10k"],
+  ["unknown", "Chưa có số liệu"],
+] as const;
+function ReelBands({
+  value,
+  counts,
+  onChange,
+}: {
+  value: string;
+  counts?: Record<string, number>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="reel-bands" aria-label="Phân loại theo lượt xem">
+      {reelBands.map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={value === key}
+          className={value === key ? "selected" : ""}
+          onClick={() => onChange(key)}
+        >
+          {label}
+          <span>{counts ? number(counts[key]) : "—"}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+function viewTier(views: number | null) {
+  return views == null
+    ? "Chưa có số liệu"
+    : views >= 100000
+      ? "100k+"
+      : views >= 50000
+        ? "50k–100k"
+        : views >= 10000
+          ? "10k–50k"
+          : "Dưới 10k";
+}
 function ReelTable({ items, user }: { items: Reel[]; user: User }) {
   const [selected, setSelected] = useState<Reel>();
   return (
@@ -496,7 +543,7 @@ function ReelTable({ items, user }: { items: Reel[]; user: User }) {
           <thead>
             <tr>
               <th>Nội dung / Page</th>
-              <th className="numeric">Lượt phát</th>
+              <th className="numeric">Lượt xem</th>
               <th className="numeric">Bình luận</th>
               <th className="numeric">Chia sẻ</th>
               <th>Số liệu</th>
@@ -504,7 +551,12 @@ function ReelTable({ items, user }: { items: Reel[]; user: User }) {
           </thead>
           <tbody>
             {items.map((r) => (
-              <tr key={r.video_id}>
+              <tr
+                key={r.video_id}
+                className={
+                  r.views != null && r.views >= 100000 ? "reel-breakout" : ""
+                }
+              >
                 <td>
                   <div className="content-cell">
                     <span className="video-mark">
@@ -531,7 +583,12 @@ function ReelTable({ items, user }: { items: Reel[]; user: User }) {
                   </div>
                 </td>
                 <td className="numeric" title={date(r.views_observed_at)}>
-                  {number(r.views)}
+                  <strong className="content-views">{number(r.views)}</strong>
+                  <small
+                    className={`view-tier ${r.views != null && r.views >= 100000 ? "breakout" : ""}`}
+                  >
+                    {viewTier(r.views)}
+                  </small>
                 </td>
                 <td className="numeric" title={date(r.comments_observed_at)}>
                   {number(r.comments)}
@@ -682,7 +739,14 @@ function Dashboard({
   navigate: (view: string) => void;
   onCreate: () => void;
 }) {
+  const [band, setBand] = useState("all"),
+    [contentOffset, setContentOffset] = useState(0);
   const query = useData<Overview>(user, "/api/overview", true);
+  const content = useData<Analytics>(
+    user,
+    `/api/analytics?limit=5&offset=${contentOffset}&sort=views_desc&band=${band}`,
+    true,
+  );
   const jobs = useData<{ jobs: Job[] }>(
     user,
     "/api/reels?limit=4&status=pending&sort=scheduled_asc",
@@ -818,7 +882,7 @@ function Dashboard({
           <div className="section-heading">
             <div>
               <h3>Nội dung gần đây</h3>
-              <p>Số liệu tích lũy theo từng nội dung.</p>
+              <p>Lượt xem giảm dần · Số liệu tích lũy từng nội dung.</p>
             </div>
             <button
               className="text-button"
@@ -828,13 +892,33 @@ function Dashboard({
               <ArrowUpRight size={14} />
             </button>
           </div>
-          {data.analytics.items.length ? (
-            <ReelTable user={user} items={data.analytics.items} />
+          <ReelBands
+            value={band}
+            counts={content.data?.bands}
+            onChange={(value) => {
+              setBand(value);
+              setContentOffset(0);
+            }}
+          />
+          {content.isPending ? (
+            <Loading />
+          ) : content.error ? (
+            <ErrorBox error={content.error} retry={() => content.refetch()} />
+          ) : content.data.items.length ? (
+            <>
+              <ReelTable user={user} items={content.data.items} />
+              <Pager
+                total={content.data.total}
+                offset={contentOffset}
+                setOffset={setContentOffset}
+                limit={5}
+              />
+            </>
           ) : (
             <Empty
               icon={ChartNoAxesCombined}
-              title="Chưa có số liệu nội dung"
-              description="Kết nối Page để bắt đầu theo dõi hiệu quả."
+              title="Chưa có nội dung trong nhóm này"
+              description="Chọn nhóm khác hoặc đồng bộ để cập nhật số liệu."
               action={
                 <button onClick={() => navigate("connections")}>
                   Thêm kết nối
@@ -1250,8 +1334,16 @@ function ConnectionForm({
   );
 }
 
-function PageCard({ page, onSelect, onSource, sourceId }: {
-  page: Page; onSelect: () => void; onSource: (id: number) => void; sourceId: string;
+function PageCard({
+  page,
+  onSelect,
+  onSource,
+  sourceId,
+}: {
+  page: Page;
+  onSelect: () => void;
+  onSource: (id: number) => void;
+  sourceId: string;
 }) {
   const followers = page.details?.followers_count;
   const followerCount =
@@ -1261,7 +1353,9 @@ function PageCard({ page, onSelect, onSource, sourceId }: {
       ? followers
       : null;
   const stats = page.analytics;
-  const sources = page.connections.filter((connection) => connection.status !== "disconnected");
+  const sources = page.connections.filter(
+    (connection) => connection.status !== "disconnected",
+  );
   const metrics = [
     {
       label: "Người theo dõi",
@@ -1330,15 +1424,21 @@ function PageCard({ page, onSelect, onSource, sourceId }: {
         <div className="page-card-source">
           <KeyRound size={13} />
           <div className="page-source-links">
-            {sources.length ? sources.map((source) => (
-              <button
-                key={source.id}
-                className={sourceId === String(source.id) ? "selected" : ""}
-                title={`System User: ${source.label}`}
-                aria-label={`Lọc Pages theo ${source.label}`}
-                onClick={() => onSource(source.id)}
-              >{source.label}</button>
-            )) : <span>Chưa có nguồn đang kết nối</span>}
+            {sources.length ? (
+              sources.map((source) => (
+                <button
+                  key={source.id}
+                  className={sourceId === String(source.id) ? "selected" : ""}
+                  title={`System User: ${source.label}`}
+                  aria-label={`Lọc Pages theo ${source.label}`}
+                  onClick={() => onSource(source.id)}
+                >
+                  {source.label}
+                </button>
+              ))
+            ) : (
+              <span>Chưa có nguồn đang kết nối</span>
+            )}
           </div>
         </div>
         <div className="page-card-actions">
@@ -1367,6 +1467,7 @@ function Pages({ user }: { user: User }) {
     [offset, setOffset] = useState(0),
     [pageSize, setPageSize] = useState(12),
     [sourceId, setSourceId] = useState(""),
+    [sort, setSort] = useState("views_desc"),
     [removed, setRemoved] = useState(false),
     [selected, setSelected] = useState<Page>(),
     [error, setError] = useState<unknown>(),
@@ -1379,20 +1480,25 @@ function Pages({ user }: { user: User }) {
       let offset = 0;
       while (true) {
         const page = await api<{ items: Connection[]; total: number }>(
-          `/api/connections?limit=100&offset=${offset}`, { signal },
+          `/api/connections?limit=100&offset=${offset}`,
+          { signal },
         );
         items.push(...page.items);
         offset += page.items.length;
-        if (offset >= page.total) return items.filter((source) => source.token_type === "system_user");
-        if (!page.items.length) throw new Error("Chưa tải đủ danh sách System User. Thử lại.");
+        if (offset >= page.total)
+          return items.filter((source) => source.token_type === "system_user");
+        if (!page.items.length)
+          throw new Error("Chưa tải đủ danh sách System User. Thử lại.");
       }
     },
   });
   const query = useData<{ items: Page[]; total: number }>(
     user,
-    `/api/pages?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(search)}&removed=${removed}${sourceId ? `&connection_id=${sourceId}` : ""}`,
+    `/api/pages?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(search)}&removed=${removed}&sort=${sort}${sourceId ? `&connection_id=${sourceId}` : ""}`,
   );
-  const selectedSource = sources.data?.find((source) => String(source.id) === sourceId);
+  const selectedSource = sources.data?.find(
+    (source) => String(source.id) === sourceId,
+  );
   function filterSource(id: string) {
     setSourceId(id);
     setOffset(0);
@@ -1428,32 +1534,44 @@ function Pages({ user }: { user: User }) {
           placeholder="Tìm tên hoặc ID Page…"
         />
         <div className="toolbar-actions">
-          <select
-            className="page-source-filter"
-            aria-label="Lọc theo System User"
+          <Dropdown
+            label="Lọc theo System User"
             value={sourceId}
             disabled={sources.isPending}
-            onChange={(e) => filterSource(e.target.value)}
-          >
-            <option value="">Tất cả System User</option>
-            {sources.data?.map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.label}{!source.connected ? " · Đã ngắt" : !removed ? ` · ${source.page_count} Page` : ""}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Số Page mỗi trang"
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
+            onChange={filterSource}
+            options={[
+              { value: "", label: "Tất cả System User" },
+              ...(sources.data || []).map((source) => ({
+                value: String(source.id),
+                label: `${source.identity_name || source.label}${!source.connected ? " · Đã ngắt" : !removed ? ` · ${source.page_count} Page` : ""}`,
+              })),
+            ]}
+          />
+          <Dropdown
+            label="Sắp xếp Page"
+            value={sort}
+            onChange={(value) => {
+              setSort(value);
               setOffset(0);
             }}
-          >
-            <option value={12}>12 / trang</option>
-            <option value={24}>24 / trang</option>
-            <option value={48}>48 / trang</option>
-          </select>
+            options={[
+              { value: "views_desc", label: "Lượt xem giảm dần" },
+              { value: "followers_desc", label: "Follower giảm dần" },
+              { value: "name", label: "Tên Page A–Z" },
+            ]}
+          />
+          <Dropdown
+            label="Số Page mỗi trang"
+            value={String(pageSize)}
+            onChange={(value) => {
+              setPageSize(Number(value));
+              setOffset(0);
+            }}
+            options={[12, 24, 48].map((value) => ({
+              value: String(value),
+              label: `${value} / trang`,
+            }))}
+          />
           <div className="segmented">
             <button
               className={!removed ? "selected" : ""}
@@ -1476,11 +1594,23 @@ function Pages({ user }: { user: User }) {
           </div>
         </div>
       </div>
-      {sources.error && <ErrorBox error={sources.error} retry={() => sources.refetch()} />}
+      {sources.error && (
+        <ErrorBox error={sources.error} retry={() => sources.refetch()} />
+      )}
       <div className="pages-source-summary" aria-live="polite">
-        <span><KeyRound size={14} />{selectedSource?.label || (sourceId ? "System User đã chọn" : "Tất cả System User")}</span>
+        <span>
+          <KeyRound size={14} />
+          {selectedSource?.identity_name ||
+            selectedSource?.label ||
+            (sourceId ? "System User đã chọn" : "Tất cả System User")}
+        </span>
         <small>Một Page có thể thuộc nhiều System User.</small>
-        {sourceId && <button className="text-button" onClick={() => filterSource("")}><X size={14} />Bỏ lọc nguồn</button>}
+        {sourceId && (
+          <button className="text-button" onClick={() => filterSource("")}>
+            <X size={14} />
+            Bỏ lọc nguồn
+          </button>
+        )}
       </div>
       {error != null && <ErrorBox error={error} />}{" "}
       {query.isPending ? (
@@ -1517,18 +1647,18 @@ function Pages({ user }: { user: User }) {
               ? "Không tìm thấy Page"
               : sourceId
                 ? "System User này chưa có Page phù hợp"
-              : removed
-                ? "Chưa có Page đã gỡ"
-                : "Kho Page đang trống"
+                : removed
+                  ? "Chưa có Page đã gỡ"
+                  : "Kho Page đang trống"
           }
           description={
             search
               ? "Thử tìm bằng tên hoặc ID Page khác."
               : sourceId
                 ? "Thử chọn nguồn khác hoặc bỏ lọc nguồn."
-              : removed
-                ? "Các Page đã gỡ có thể được khôi phục tại đây."
-                : "Vào Kết nối, thêm token System User và đồng bộ Pages để bắt đầu."
+                : removed
+                  ? "Các Page đã gỡ có thể được khôi phục tại đây."
+                  : "Vào Kết nối, thêm token System User và đồng bộ Pages để bắt đầu."
           }
         />
       )}{" "}
@@ -1886,201 +2016,427 @@ function JobDetail({
   );
 }
 
+type CalendarGroup = {
+  id: number;
+  label: string;
+  identity_name: string | null;
+  connected: boolean;
+  status: string;
+  page_count: number;
+  job_count: number;
+  scheduled_pages: number;
+  completed: number;
+  pending: number;
+  attention: number;
+  cancelled: number;
+};
 function Calendar({ user }: { user: User }) {
   const today = localDate(new Date(), user.timezone).slice(0, 10);
-  const [mode, setMode] = useState<"list" | "week" | "month">("month"),
+  const [source, setSource] = useState<CalendarGroup>(),
+    [groupOffset, setGroupOffset] = useState(0),
+    [mode, setMode] = useState<"list" | "week" | "month">("list"),
     [week, setWeek] = useState(0),
     [month, setMonth] = useState(() => today.slice(0, 7)),
     [status, setStatus] = useState("all"),
+    [search, setSearch] = useState(""),
     [offset, setOffset] = useState(0),
+    [dayFilter, setDayFilter] = useState(""),
     [selected, setSelected] = useState<Job>();
-  const limit = mode === "list" ? 25 : 100;
-  const query = useData<{ jobs: Job[]; total: number }>(
-    user,
-    `/api/reels?limit=${limit}&offset=${offset}&calendar=${month}&status=${status}&sort=scheduled_asc`,
-    true,
-  );
-  function shift(n: number) {
-    const d = new Date(month + "-01T12:00:00");
-    d.setMonth(d.getMonth() + n);
-    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-    setOffset(0);
-  }
-  const first = new Date(month + "-01T12:00:00");
-  const start = new Date(first);
+  const limit = 12;
+  const keyOf = (day: Date) =>
+    `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+  const first = new Date(month + "-01T12:00:00"),
+    start = new Date(first);
   start.setDate(
     1 - ((first.getDay() + 6) % 7) + (mode === "week" ? week * 7 : 0),
   );
-  const days = Array.from({ length: mode === "week" ? 7 : 42 }, (_, i) => {
-    const d = new Date(start);
-    d.setDate(d.getDate() + i);
-    return d;
+  const days = Array.from({ length: mode === "week" ? 7 : 42 }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(day.getDate() + index);
+    return day;
   });
+  const groupPath = `/api/reels/groups?limit=12&offset=${groupOffset}&calendar=${month}&status=${status}&search=${encodeURIComponent(search)}`;
+  const groups = useQuery<{ items: CalendarGroup[]; total: number }>({
+    queryKey: [user.id, groupPath],
+    queryFn: ({ signal }) => api(groupPath, { signal }),
+    enabled: !source,
+    refetchInterval: 15000,
+  });
+  const period =
+    mode === "week"
+      ? `date_from=${keyOf(days[0])}&date_to=${keyOf(days[6])}`
+      : `calendar=${dayFilter || month}`;
+  const jobPath = `/api/reels?limit=${limit}&offset=${offset}&${period}&status=${status}&sort=scheduled_asc&connection_id=${source?.id || 0}`;
+  const jobs = useQuery<{ jobs: Job[]; total: number }>({
+    queryKey: [user.id, jobPath],
+    queryFn: ({ signal }) => api(jobPath, { signal }),
+    enabled: !!source,
+    refetchInterval: 15000,
+  });
+  function changeMonth(value: string) {
+    setMonth(value);
+    setOffset(0);
+    setGroupOffset(0);
+    setWeek(0);
+    setDayFilter("");
+  }
+  function shift(amount: number) {
+    const day = new Date(month + "-01T12:00:00");
+    day.setMonth(day.getMonth() + amount);
+    changeMonth(keyOf(day).slice(0, 7));
+  }
   return (
     <>
-      <div className="toolbar">
+      {source && (
+        <div className="calendar-breadcrumb">
+          <button
+            className="text-button"
+            onClick={() => {
+              setSource(undefined);
+              setOffset(0);
+              setDayFilter("");
+            }}
+          >
+            <ChevronLeft size={15} />
+            System User
+          </button>
+          <ChevronRight size={14} />
+          <strong>{source.identity_name || source.label}</strong>
+        </div>
+      )}
+      <div className="toolbar calendar-toolbar">
         <div className="date-switcher">
           <button
             className="icon-button"
             aria-label="Tháng trước"
             onClick={() => shift(-1)}
           >
-            <ChevronLeft size={17} />
+            <ChevronLeft size={16} />
           </button>
-          <input
-            type="month"
-            aria-label="Chọn tháng lịch"
-            value={month}
-            onChange={(e) => {
-              setMonth(e.target.value);
-              setOffset(0);
-            }}
-          />
+          <MonthPicker value={month} today={today} onChange={changeMonth} />
           <button
             className="icon-button"
             aria-label="Tháng sau"
             onClick={() => shift(1)}
           >
-            <ChevronRight size={17} />
+            <ChevronRight size={16} />
           </button>
         </div>
         <div className="toolbar-actions">
-          {mode === "week" && (
-            <select
-              aria-label="Tuần hiển thị"
-              value={week}
-              onChange={(e) => setWeek(Number(e.target.value))}
-            >
-              {[0, 1, 2, 3, 4, 5].map((w) => (
-                <option key={w} value={w}>
-                  Tuần {w + 1}
-                </option>
-              ))}
-            </select>
+          {source && mode === "week" && (
+            <Dropdown
+              label="Tuần hiển thị"
+              value={String(week)}
+              options={[0, 1, 2, 3, 4, 5].map((value) => ({
+                value: String(value),
+                label: `Tuần ${value + 1}`,
+              }))}
+              onChange={(value) => {
+                setWeek(Number(value));
+                setOffset(0);
+              }}
+            />
           )}
-          <select
-            aria-label="Lọc trạng thái lịch"
+          <Dropdown
+            label="Lọc trạng thái lịch"
             value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
+            onChange={(value) => {
+              setStatus(value);
               setOffset(0);
+              setGroupOffset(0);
             }}
-          >
-            <option value="all">Tất cả trạng thái</option>
-            <option value="pending">Chờ / đang chạy</option>
-            <option value="completed">Đã đăng</option>
-            <option value="attention">Cần xử lý</option>
-            <option value="cancelled">Đã hủy</option>
-          </select>
-          <div className="segmented">
-            {(["list", "week", "month"] as const).map((m) => (
+            options={[
+              { value: "all", label: "Tất cả trạng thái" },
+              { value: "pending", label: "Chờ / đang chạy" },
+              { value: "completed", label: "Đã đăng" },
+              { value: "attention", label: "Cần xử lý" },
+              { value: "cancelled", label: "Đã hủy" },
+            ]}
+          />
+          {source && (
+            <div className="segmented">
+              {(["list", "week", "month"] as const).map((value) => (
+                <button
+                  key={value}
+                  aria-pressed={mode === value}
+                  className={mode === value ? "selected" : ""}
+                  onClick={() => {
+                    setMode(value);
+                    setOffset(0);
+                    setDayFilter("");
+                  }}
+                >
+                  {value === "list"
+                    ? "Danh sách"
+                    : value === "week"
+                      ? "Tuần"
+                      : "Tháng"}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {!source ? (
+        <>
+          <div className="calendar-intro">
+            <div>
+              <h3>Lịch theo System User</h3>
+              <p>Chọn một nguồn để xem lịch của các Page bên trong.</p>
+            </div>
+            <SearchBox
+              value={search}
+              onChange={(value) => {
+                setSearch(value);
+                setGroupOffset(0);
+              }}
+              placeholder="Tìm System User…"
+            />
+          </div>
+          {groups.isPending ? (
+            <Loading />
+          ) : groups.error ? (
+            <ErrorBox error={groups.error} retry={() => groups.refetch()} />
+          ) : (
+            <>
+              {groups.data.items.length ? (
+                <div className="system-calendar-grid">
+                  {groups.data.items.map((group) => (
+                    <button
+                      className="system-calendar-card"
+                      key={group.id}
+                      onClick={() => {
+                        setSource(group);
+                        setOffset(0);
+                        setMode("list");
+                        setDayFilter("");
+                      }}
+                    >
+                      <div className="system-card-heading">
+                        <span className="system-icon">
+                          <KeyRound size={19} />
+                        </span>
+                        <div>
+                          <strong>{group.identity_name || group.label}</strong>
+                          <small>
+                            {group.identity_name &&
+                            group.identity_name !== group.label
+                              ? group.label
+                              : "System User"}
+                          </small>
+                        </div>
+                        <ChevronRight size={17} />
+                      </div>
+                      <div className="system-card-total">
+                        <strong>{number(group.job_count)}</strong>
+                        <span>lịch trong tháng</span>
+                        <small>
+                          {number(group.scheduled_pages)} Page có lịch
+                        </small>
+                      </div>
+                      <div className="system-card-counts">
+                        <span>
+                          <i className="status-dot good" />
+                          {number(group.completed)} đã đăng
+                        </span>
+                        <span>
+                          <i className="status-dot pending" />
+                          {number(group.pending)} đang chờ
+                        </span>
+                        <span>
+                          <i className="status-dot attention" />
+                          {number(group.attention)} cần xử lý
+                        </span>
+                      </div>
+                      <div className="system-card-footer">
+                        <span>
+                          {number(group.page_count)} Page đang quản lý
+                        </span>
+                        <span>
+                          Xem lịch
+                          <ArrowUpRight size={13} />
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <Empty
+                  icon={CalendarDays}
+                  title="Chưa có System User phù hợp"
+                  description="Thử bộ lọc khác hoặc thêm nguồn trong Kết nối."
+                />
+              )}
+              <Pager
+                total={groups.data.total}
+                offset={groupOffset}
+                setOffset={setGroupOffset}
+                limit={12}
+              />
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="calendar-detail-heading">
+            <span>
+              <KeyRound size={15} />
+              {source.identity_name || source.label}
+            </span>
+            <small>12 lịch / trang · Giờ theo múi giờ của từng lịch</small>
+            {dayFilter && (
               <button
-                key={m}
-                className={mode === m ? "selected" : ""}
+                className="subtle"
                 onClick={() => {
-                  setMode(m);
+                  setDayFilter("");
                   setOffset(0);
                 }}
               >
-                {m === "list" ? "Danh sách" : m === "week" ? "Tuần" : "Tháng"}
+                {dayFilter}
+                <X size={13} />
               </button>
-            ))}
+            )}
           </div>
-        </div>
-      </div>
-      <div className="hint">Ngày giờ hiển thị theo múi giờ của từng lịch.</div>
-      {query.isPending ? (
-        <Loading />
-      ) : query.error ? (
-        <ErrorBox error={query.error} retry={() => query.refetch()} />
-      ) : (
-        <>
-          {mode === "list" ? (
-            query.data.jobs.length ? (
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Page / Video</th>
-                      <th>Thời gian địa phương</th>
-                      <th>Trạng thái</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {query.data.jobs.map((j) => (
-                      <tr key={j.id}>
-                        <td>
-                          {j.page_name}
-                          <small>{j.asset_name}</small>
-                        </td>
-                        <td>
-                          {j.scheduled_local.replace("T", " ")}
-                          <small>{j.timezone}</small>
-                        </td>
-                        <td>
-                          <Badge status={j.status} />
-                        </td>
-                        <td>
-                          <button onClick={() => setSelected(j)}>
-                            Chi tiết
-                            <ChevronRight size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <Empty
-                icon={CalendarDays}
-                title="Tháng này chưa có lịch"
-                description="Tạo lịch Reel để bắt đầu sắp xếp nội dung của bạn."
-              />
-            )
+          {jobs.isPending ? (
+            <Loading />
+          ) : jobs.error ? (
+            <ErrorBox error={jobs.error} retry={() => jobs.refetch()} />
           ) : (
-            <div className="calendar-grid">
-              {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "CN"].map(
-                (day) => (
-                  <div className="calendar-weekday" key={day}>
-                    {day}
+            <>
+              {mode === "list" ? (
+                jobs.data.jobs.length ? (
+                  <div className="calendar-list table-scroll">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Page / Nội dung</th>
+                          <th>Thời gian đăng</th>
+                          <th>Trạng thái</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {jobs.data.jobs.map((job) => (
+                          <tr key={job.id}>
+                            <td>
+                              <div className="scheduled-content">
+                                <span className="scheduled-avatar">
+                                  {job.page_name.slice(0, 2).toUpperCase()}
+                                </span>
+                                <div>
+                                  <strong>{job.page_name}</strong>
+                                  <small title={job.asset_name}>
+                                    {job.caption || job.asset_name}
+                                  </small>
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <strong className="scheduled-time">
+                                {job.scheduled_local.slice(11, 16)}
+                              </strong>
+                              <small>
+                                {job.scheduled_local
+                                  .slice(0, 10)
+                                  .split("-")
+                                  .reverse()
+                                  .join("/")}{" "}
+                                · {job.timezone}
+                              </small>
+                            </td>
+                            <td>
+                              <Badge status={job.status} />
+                            </td>
+                            <td>
+                              <button
+                                className="icon-button"
+                                aria-label={`Chi tiết lịch ${job.id}`}
+                                onClick={() => setSelected(job)}
+                              >
+                                <ChevronRight size={17} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ),
-              )}
-              {days.map((day) => {
-                const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
-                const items = query.data.jobs.filter((j) =>
-                  j.scheduled_local.startsWith(key),
-                );
-                return (
-                  <div
-                    className={`calendar-day ${key.slice(0, 7) !== month ? "outside" : ""} ${key === today ? "today" : ""}`}
-                    key={key}
-                  >
-                    <span>{day.getDate()}</span>
-                    {items.map((j) => (
-                      <button
-                        className={`calendar-job ${j.status === "needs_review" || j.status === "needs_user" ? "attention" : ""}`}
-                        key={j.id}
-                        onClick={() => setSelected(j)}
-                      >
-                        <strong>{j.scheduled_local.slice(11, 16)}</strong>
-                        {j.page_name}
-                        <small>{statusNames[j.status] || j.status}</small>
-                      </button>
+                ) : (
+                  <Empty
+                    icon={CalendarDays}
+                    title="Chưa có lịch phù hợp"
+                    description="Chọn tháng hoặc trạng thái khác để xem lịch của System User này."
+                  />
+                )
+              ) : (
+                <div className="calendar-scroll">
+                  <div className="calendar-grid">
+                    {[
+                      "Thứ 2",
+                      "Thứ 3",
+                      "Thứ 4",
+                      "Thứ 5",
+                      "Thứ 6",
+                      "Thứ 7",
+                      "CN",
+                    ].map((day) => (
+                      <div key={day} className="calendar-weekday">
+                        {day}
+                      </div>
                     ))}
+                    {days.map((day) => {
+                      const key = keyOf(day),
+                        items = jobs.data.jobs.filter((job) =>
+                          job.scheduled_local.startsWith(key),
+                        );
+                      return (
+                        <div
+                          key={key}
+                          className={`calendar-day ${key.slice(0, 7) !== month ? "outside" : ""} ${key === today ? "today" : ""}`}
+                        >
+                          <span>{day.getDate()}</span>
+                          {items.slice(0, 3).map((job) => (
+                            <button
+                              className={`calendar-job ${["needs_review", "needs_user"].includes(job.status) ? "attention" : ""}`}
+                              key={job.id}
+                              onClick={() => setSelected(job)}
+                            >
+                              <strong>
+                                {job.scheduled_local.slice(11, 16)}
+                              </strong>
+                              {job.page_name}
+                              <small>
+                                {statusNames[job.status] || job.status}
+                              </small>
+                            </button>
+                          ))}
+                          {items.length > 3 && (
+                            <button
+                              className="calendar-more"
+                              onClick={() => {
+                                setDayFilter(key);
+                                setMode("list");
+                                setOffset(0);
+                              }}
+                            >
+                              Xem lịch ngày này
+                              <ChevronRight size={12} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              )}
+              <Pager
+                total={jobs.data.total}
+                offset={offset}
+                setOffset={setOffset}
+                limit={limit}
+              />
+            </>
           )}
-          <Pager
-            total={query.data.total}
-            offset={offset}
-            setOffset={setOffset}
-            limit={limit}
-          />
         </>
       )}
       {selected && (
@@ -2097,11 +2453,13 @@ function Calendar({ user }: { user: User }) {
 function AnalyticsView({ user }: { user: User }) {
   const [search, setSearch] = useState(""),
     [offset, setOffset] = useState(0),
+    [band, setBand] = useState("all"),
+    [sort, setSort] = useState("views_desc"),
     [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false);
   const query = useData<Analytics>(
     user,
-    `/api/analytics?limit=25&offset=${offset}&search=${encodeURIComponent(search)}`,
+    `/api/analytics?limit=12&offset=${offset}&search=${encodeURIComponent(search)}&sort=${sort}&band=${band}`,
     true,
   );
   const client = useQueryClient();
@@ -2131,12 +2489,31 @@ function AnalyticsView({ user }: { user: User }) {
           }}
           placeholder="Tìm nội dung hoặc Page…"
         />
-        <span className="muted">Lượt phát gồm phát lại · Tổng tích lũy</span>
+        <Dropdown
+          label="Sắp xếp nội dung"
+          value={sort}
+          onChange={(value) => {
+            setSort(value);
+            setOffset(0);
+          }}
+          options={[
+            { value: "views_desc", label: "Lượt xem giảm dần" },
+            { value: "recent", label: "Mới đăng gần đây" },
+          ]}
+        />
       </div>
+      <ReelBands
+        value={band}
+        counts={query.data?.bands}
+        onChange={(value) => {
+          setBand(value);
+          setOffset(0);
+        }}
+      />
       <div className="hint">
-        <AlertTriangle size={16} />
-        Dấu — nghĩa là chưa đọc được chỉ số. Bình luận và chia sẻ chỉ hiển thị
-        khi Meta trả về số liệu riêng.
+        <Eye size={15} />
+        Lượt xem gồm phát lại · Tổng tích lũy. Dấu — là chỉ số chưa đọc được.
+        Các nhóm lượt xem không chồng lặp.
       </div>
       {error != null && <ErrorBox error={error} />}{" "}
       {query.isPending ? (
@@ -2158,6 +2535,7 @@ function AnalyticsView({ user }: { user: User }) {
             total={query.data.total}
             offset={offset}
             setOffset={setOffset}
+            limit={12}
           />
           <p className="footnote">
             {query.data.coverage_note}

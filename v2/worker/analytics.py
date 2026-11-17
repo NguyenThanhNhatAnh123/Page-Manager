@@ -170,7 +170,13 @@ class Analytics:
                 item=dict(row);pid=item.pop('page_id');result[pid]=item
         return result
 
-    def list(self,limit=25,offset=0,search=''):
+    def list(self,limit=25,offset=0,search='',sort='views_desc',band='all'):
+        from page_manager.errors import AppError
+        orders={'views_desc':'s.views DESC NULLS LAST,r.published_at DESC NULLS LAST,r.video_id',
+                'recent':'r.published_at DESC NULLS LAST,r.video_id'}
+        bands={'all':'','under_10k':'s.views<10000','10k':'s.views>=10000 AND s.views<50000',
+               '50k':'s.views>=50000 AND s.views<100000','100k':'s.views>=100000','unknown':'s.views IS NULL'}
+        if sort not in orders or band not in bands:raise AppError('Bộ lọc thống kê không hợp lệ.','invalid_analytics_filter',422)
         columns=[]
         for metric in ('views','comments','shares'):
             columns.append(f"(SELECT t.{metric} FROM reel_metric_snapshots t WHERE t.video_id=r.video_id AND t.{metric} IS NOT NULL ORDER BY t.id DESC LIMIT 1) AS {metric}")
@@ -180,10 +186,18 @@ class Analytics:
         with self.store.connect() as db:
             where=" WHERE p.removed_at IS NULL AND (lower(r.caption) LIKE ? OR lower(p.name) LIKE ?)"
             args=('%'+search.lower()+'%',)*2
+            bucket_counts=dict(db.execute(cte+'''SELECT COUNT(*) AS "all",
+                SUM(CASE WHEN s.views<10000 THEN 1 ELSE 0 END) AS under_10k,
+                SUM(CASE WHEN s.views>=10000 AND s.views<50000 THEN 1 ELSE 0 END) AS "10k",
+                SUM(CASE WHEN s.views>=50000 AND s.views<100000 THEN 1 ELSE 0 END) AS "50k",
+                SUM(CASE WHEN s.views>=100000 THEN 1 ELSE 0 END) AS "100k",
+                SUM(CASE WHEN s.views IS NULL THEN 1 ELSE 0 END) AS unknown'''+prefix+where,args).fetchone())
+            bucket_counts={key:value or 0 for key,value in bucket_counts.items()}
+            if bands[band]:where+=' AND ('+bands[band]+')'
             select="SELECT r.*,p.name AS page_name,s.views,s.comments,s.shares,s.views_observed_at,s.comments_observed_at,s.shares_observed_at,s.observed_at,s.status AS metric_status,'fb_reels_total_plays' AS view_metric"
-            rows=[dict(row) for row in db.execute(cte+select+prefix+where+' ORDER BY r.published_at DESC NULLS LAST,r.video_id LIMIT ? OFFSET ?',(*args,limit,offset))]
+            rows=[dict(row) for row in db.execute(cte+select+prefix+where+' ORDER BY '+orders[sort]+' LIMIT ? OFFSET ?',(*args,limit,offset))]
             total=db.execute(cte+'SELECT COUNT(*)'+prefix+where,args).fetchone()[0]
             totals=dict(db.execute(cte+'''SELECT COUNT(*) AS tracked,COUNT(s.views) AS views_known,COUNT(s.comments) AS comments_known,
                 COUNT(s.shares) AS shares_known,SUM(s.views) AS views,SUM(s.comments) AS comments,SUM(s.shares) AS shares'''+prefix+' WHERE p.removed_at IS NULL').fetchone())
             discovery=[dict(row) for row in db.execute('SELECT * FROM reel_discovery')]
-        return {'items':rows,'total':total,'limit':limit,'offset':offset,'totals':totals,'discovery':discovery,'view_definition':'Lượt phát gồm phát lại · Tổng tích lũy','coverage_note':'Giữ số liệu đọc được gần nhất; trạng thái cho biết kết quả lần đọc mới. Video có sẵn được phát hiện từng nhóm 50/Page mỗi lượt; không phải video nào cũng có chỉ số Reel.'}
+        return {'items':rows,'total':total,'limit':limit,'offset':offset,'totals':totals,'bands':bucket_counts,'sort':sort,'band':band,'discovery':discovery,'view_definition':'Lượt phát gồm phát lại · Tổng tích lũy','coverage_note':'Giữ số liệu đọc được gần nhất; trạng thái cho biết kết quả lần đọc mới. Video có sẵn được phát hiện từng nhóm 50/Page mỗi lượt; không phải video nào cũng có chỉ số Reel.'}

@@ -29,6 +29,7 @@ def test_combined_social_total_is_not_split():
     assert social_counts({'comments':True,'shares':None})==(None,None)
 
 
+
 def test_metric_parser_requires_exact_name():
     payload={'data':[{'name':'reach','values':[{'value':120}]},{'name':'fb_reels_total_plays','values':[{'value':300}]}]}
     assert metric_value(payload,'fb_reels_total_plays')==300
@@ -541,3 +542,85 @@ async def test_system_user_page_groups_keep_pagination_overlap_and_owner_scope(r
         assert (await mcp_pages())['total']==0
         # The legacy catalog keeps its historical-link default.
         assert len(manager.pages(connection_id=source_b)['items'])==2
+
+
+async def test_ranked_catalog_and_reel_bands_paginate_before_returning(runtime,monkeypatch):
+    from worker import app as module
+    from page_manager.inputs import ConnectionInput
+    registry,app,owners=runtime;monkeypatch.setattr(module,'registry',registry)
+    workspace=registry.get(owners[17]);manager=workspace.manager
+    cid=manager.save_connection(ConnectionInput(label='Ranking fixture',token_type='system_user',token='FakeRankingToken'))['id']
+    values=[0,9999,10000,49999,50000,99999,100000,700000,None,1,2,3,4,5,6,7]
+    pages=[{'id':str(887000+i),'name':f'Ranking fixture {i:02d}','sources':['assigned_pages'],'tasks':['ANALYZE']} for i in range(len(values))]
+    manager.store.sync(cid,manager.store.connection(cid)['token_revision'],pages,True,'working',None,{'id':'777','name':'Ranking studio'})
+    stamp='2026-11-17T08:00:00+00:00'
+    with manager.store.connect() as db:
+        for index,page in enumerate(pages):
+            db.execute('UPDATE pages SET details=? WHERE id=?',(json.dumps({'followers_count':index*10}),page['id']))
+    for index,(page,views) in enumerate(zip(pages,values)):
+        video=str(887100+index);workspace.analytics.register(video,page['id'],cid,'Ranking fixture '+str(index),stamp)
+        with manager.store.connect() as db:
+            db.execute('INSERT INTO reel_metric_snapshots(video_id,observed_at,views,comments,shares,view_metric,api_version,status) VALUES(?,?,?,?,?,?,?,?)',
+                       (video,stamp,views,0,None,'fb_reels_total_plays','v26.0','partial'))
+    # A failed later read must retain the last known counter and its band.
+    with manager.store.connect() as db:
+        db.execute('INSERT INTO reel_metric_snapshots(video_id,observed_at,views,comments,shares,view_metric,api_version,status) VALUES(?,?,?,?,?,?,?,?)',
+                   ('887107','2026-11-17T09:00:00+00:00',None,None,None,'fb_reels_total_plays','v26.0','unavailable'))
+    headers={'x-pm-internal':os.environ['PM_INTERNAL_KEY'],'x-pm-workspace':workspace.owner}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
+        async def get(path,**params):
+            response=await client.get(path,params=params,headers=headers);assert response.status_code==200,response.text
+            return response.json()
+        first=await get('/api/pages',limit=12,connection_id=cid)
+        second=await get('/api/pages',limit=12,offset=12,connection_id=cid)
+        ordered=first['items']+second['items']
+        assert first['total']==second['total']==16 and len({row['id'] for row in ordered})==16
+        assert [row['analytics']['views'] for row in ordered]==sorted([v for v in values if v is not None],reverse=True)+[None]
+        followers=await get('/api/pages',limit=1,connection_id=cid,sort='followers_desc')
+        assert followers['items'][0]['id']==pages[-1]['id']
+        ranked=await get('/api/analytics',search='Ranking fixture',limit=3)
+        assert [row['views'] for row in ranked['items']]==[700000,100000,99999]
+        assert ranked['bands']=={'all':16,'100k':2,'50k':2,'10k':2,'under_10k':9,'unknown':1}
+        for band,expected in [('100k',[700000,100000]),('50k',[99999,50000]),('10k',[49999,10000]),('unknown',[None])]:
+            result=await get('/api/analytics',search='Ranking fixture',band=band)
+            assert [row['views'] for row in result['items']]==expected
+        foreign_headers={**headers,'x-pm-workspace':owners[18]}
+        assert (await client.get('/api/analytics?search=Ranking%20fixture',headers=foreign_headers)).json()['total']==0
+        assert (await client.get('/api/pages?sort=bad',headers=headers)).status_code==422
+        assert (await client.get('/api/analytics?band=bad',headers=headers)).status_code==422
+
+
+async def test_calendar_system_groups_and_local_week_bounds_stay_scoped(runtime,monkeypatch):
+    from worker import app as module
+    from page_manager.inputs import ConnectionInput
+    registry,app,owners=runtime;monkeypatch.setattr(module,'registry',registry)
+    workspace=registry.get(owners[18]);manager=workspace.manager
+    groups=[]
+    for name in ('Alpha','Beta'):
+        cid=manager.save_connection(ConnectionInput(label='Calendar fixture '+name,token_type='system_user',token='FakeCalendarToken'+name))['id']
+        manager.store.sync(cid,manager.store.connection(cid)['token_revision'],[{'id':'555','name':'Shared calendar Page','sources':['assigned_pages'],'tasks':['ANALYZE']}],True,'working',None,{'id':'777','name':name})
+        groups.append(cid)
+    (fixture,_),values=make_job(workspace)
+    manager.store.reel_update(fixture['id'],status='cancelled')
+    ids=[]
+    for index in range(15):
+        cid=groups[index%2]
+        row,_=manager.store.reel_create(values|{'request_id':str(uuid4()),'connection_id':cid,'connection_label':'Calendar fixture',
+            'scheduled_at':'2099-11-01T06:30:00+00:00' if index==0 else '2099-11-17T18:00:00+00:00',
+            'timezone':'America/Los_Angeles','scheduled_local':'2099-10-31T23:30:00' if index==0 else '2099-11-17T10:00:00'})
+        ids.append(row['id'])
+    manager.store.reel_update(ids[2],status='completed',video_id='887777',published_url='https://www.facebook.com/reel/887777')
+    headers={'x-pm-internal':os.environ['PM_INTERNAL_KEY'],'x-pm-workspace':workspace.owner}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
+        result=(await client.get('/api/reels/groups?calendar=2099-11&search=Calendar%20fixture&limit=1',headers=headers)).json()
+        assert result['total']==2 and len(result['items'])==1 and result['items'][0]['job_count']==7
+        result2=(await client.get('/api/reels/groups?calendar=2099-11&search=Calendar%20fixture&limit=1&offset=1',headers=headers)).json()
+        assert result['items'][0]['id']!=result2['items'][0]['id']
+        attention=(await client.get('/api/reels/groups?calendar=2099-11&status=completed&search=Calendar%20fixture',headers=headers)).json()
+        assert attention['total']==1 and attention['items'][0]['completed']==1
+        weekly=(await client.get(f'/api/reels?connection_id={groups[0]}&date_from=2099-10-26&date_to=2099-11-01',headers=headers)).json()
+        assert weekly['total']==1 and weekly['jobs'][0]['id']==ids[0]
+        foreign={**headers,'x-pm-workspace':owners[19]}
+        assert (await client.get('/api/reels/groups?search=Calendar%20fixture',headers=foreign)).json()['total']==0
+        assert (await client.get('/api/reels/groups?calendar=2099-99',headers=headers)).status_code==422
+        assert (await client.get('/api/reels?date_from=2099-11-20&date_to=2099-11-01',headers=headers)).status_code==422

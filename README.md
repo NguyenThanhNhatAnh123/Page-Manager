@@ -4,6 +4,8 @@ PageManager v2 gồm Rust gateway, Python worker và giao diện React/TypeScrip
 
 Pages có bộ lọc theo System User, lọc nhanh từ tên nguồn trên thẻ và giữ phân trang 12/24/48. Page có nhiều nguồn được gộp theo ID trong danh sách tổng.
 
+Lịch đăng mở theo từng System User, phân trang nhóm và lịch chi tiết 12 mục; vẫn có danh sách/tuần/tháng. Page mặc định xếp theo lượt xem giảm dần, có lựa chọn follower giảm dần. Tổng quan và Thống kê xếp nội dung theo lượt xem, phân nhóm dưới 10k, 10k–50k, 50k–100k, 100k+ và chưa có số liệu. Bộ chọn tháng và các bộ lọc chính dùng giao diện riêng đồng bộ với thẻ Page.
+
 MCP Codex/Claude hỗ trợ quản lý Page, video và đăng/đặt lịch Reel trong kho của chủ token. Yêu cầu đăng đã được chủ kho giao cho agent dùng chính sách trực tiếp, không duyệt Telegram. Cơ chế kiểm tra nguồn, UUID chống tạo trùng và xác minh kết quả đăng chưa rõ vẫn được giữ.
 
 - [Mã v2 và hướng dẫn chạy](v2/README.md)

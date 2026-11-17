@@ -35,6 +35,7 @@ from page_manager.reel_assets import TokenReelAssets,ReelAssetError,ReelAssetToo
 from .publication import DirectReelInput as TokenReelInput,DirectReelScheduler
 from page_manager.avatars import PageAvatars,AvatarUnavailable
 from .analytics import Analytics,ID
+from .catalog import ranked_pages,calendar_groups
 
 
 def central():return psycopg.connect(os.environ['DATABASE_URL'],row_factory=dict_row,connect_timeout=5,prepare_threshold=None)
@@ -228,12 +229,9 @@ async def disconnect(request:Request,cid:int,body:Revision):return ws(request).m
 
 
 @app.get('/api/pages')
-async def pages(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200),status:str='',connection_id:int|None=None,removed:bool=False):
+async def pages(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200),status:str='',connection_id:int|None=None,removed:bool=False,sort:str='views_desc'):
     workspace=ws(request)
-    result=workspace.manager.pages(limit=limit,offset=offset,search=search,status=status,connection_id=connection_id,connection_active_only=True,removed=removed)
-    summaries=workspace.analytics.page_summaries([page['id'] for page in result['items']])
-    result['items']=[{**page,'analytics':summaries[page['id']]} for page in result['items']]
-    return result
+    return ranked_pages(workspace,limit,offset,search,connection_id,removed,sort,status)
 
 
 @app.get('/api/pages/{pid}')
@@ -281,8 +279,8 @@ def sync_status(owner):
 
 
 @app.get('/api/analytics')
-async def analytics(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200)):
-    return {**ws(request).analytics.list(limit,offset,search),'sync':sync_status(ws(request).owner)}
+async def analytics(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200),sort:str='views_desc',band:str='all'):
+    return {**ws(request).analytics.list(limit,offset,search,sort,band),'sync':sync_status(ws(request).owner)}
 
 
 @app.post('/api/analytics/sync',status_code=202)
@@ -340,10 +338,15 @@ async def preview(request:Request,asset_id:str):
     return FileResponse(row['path'],media_type=row['mime'],filename=row['name'],content_disposition_type='inline')
 
 
+@app.get('/api/reels/groups')
+async def reel_groups(request:Request,limit:int=Query(12,ge=1,le=100),offset:int=Query(0,ge=0),calendar:str='',status:str=Query('all',pattern='^(all|pending|completed|attention|cancelled)$'),search:str=Query('',max_length=200)):
+    return calendar_groups(ws(request),limit,offset,calendar,status,search)
+
+
 @app.get('/api/reels')
-async def reels(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200),status:str='all',calendar:str='',sort:str='recent',page_id:str|None=None,connection_id:int|None=None):
+async def reels(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200),status:str='all',calendar:str='',sort:str='recent',page_id:str|None=None,connection_id:int|None=None,date_from:str='',date_to:str=''):
     workspace=ws(request)
-    result=workspace.manager.store.reel_job_page(limit,offset,search,status,calendar=calendar,sort=sort,page_id=page_id,connection_id=connection_id)
+    result=workspace.manager.store.reel_job_page(limit,offset,search,status,calendar=calendar,sort=sort,page_id=page_id,connection_id=connection_id,date_from=date_from,date_to=date_to)
     return {'jobs':[workspace.scheduler.public(row)|{'asset':workspace.assets.public(result['assets'][row['asset_id']]) if row['asset_id'] in result['assets'] else None} for row in result['rows']],**{key:result[key] for key in ('total','limit','offset')},'scheduler':workspace.scheduler.status()}
 
 
