@@ -1,0 +1,13 @@
+.tools/
+.venv/
+.runtime/
+.env
+data/
+gateway/target/
+frontend/node_modules/
+scripts/node_modules/
+frontend/dist/
+*.tsbuildinfo
+__pycache__/
+.pytest_cache/
+*.pyc

@@ -1,0 +1,191 @@
+{
+  "date": "2026-11-16",
+  "legacy_core_tests": {
+    "passed": 220,
+    "scope": "token reel scheduler, assets, inputs, graph, connection revisions"
+  },
+  "v2_worker_tests": {
+    "passed": 23,
+    "engine": "PostgreSQL 17.5 through PGlite development socket",
+    "includes": [
+      "20 isolated namespaces",
+      "owner-bound encryption",
+      "nullable and retained metrics",
+      "MCP scopes and legacy core arguments",
+      "schedule idempotency and checkpoint recovery",
+      "safe amendments",
+      "upload errors",
+      "Page card totals scoped to server catalog window",
+      "Full MCP management and read-only denial",
+      "Page edits preserve explicitly provided fields",
+      "direct API/MCP publication without Telegram approval",
+      "legacy required-review settings do not gate v2",
+      "immediate MCP replay preserves job UUID",
+      "uncertain publish only verifies without a second finish"
+    ]
+  },
+  "frontend": {
+    "typescript": "passed",
+    "vite_build": "passed",
+    "browser": "passed with read-only QA harness",
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "responsive_widths_checked": [
+      390,
+      748,
+      1280,
+      1440
+    ],
+    "last_console_errors": 0,
+    "visual_refinement": {
+      "screenshots": [
+        "page-manager-clean-light.jpg",
+        "page-manager-clean-dark.jpg"
+      ],
+      "checks": [
+        "quiet overview surfaces",
+        "Page table",
+        "System User actions and edit form",
+        "Reel composer",
+        "month and week calendar",
+        "owner-timezone today marker",
+        "empty library",
+        "no page-wide horizontal overflow"
+      ]
+    },
+    "typography_refinement": {
+      "font": "Inter Variable, bundled locally",
+      "primary_button": {
+        "font_px": 14,
+        "weight": 600,
+        "height_px": 42
+      },
+      "body_px": 14,
+      "secondary_type_px": [
+        12,
+        13
+      ],
+      "visible_overview_text_below_12px": 0,
+      "keyboard_focus_outline_px": 2,
+      "responsive_widths_checked": [
+        390,
+        748,
+        1440
+      ],
+      "reel_composer_mobile": "fits 390px viewport",
+      "console_errors": 0,
+      "screenshots": [
+        "page-manager-typography-light.jpg",
+        "page-manager-typography-dark.jpg",
+        "reel-typography.jpg"
+      ]
+    },
+    "page_grid": {
+      "palette": "white, neutral gray, black, lime",
+      "claude_cli_assistance": "completed in isolated frontend copy; reviewed and integrated",
+      "server_pagination": {
+        "default_limit": 12,
+        "options": [
+          12,
+          24,
+          48
+        ],
+        "fixture_total": 25,
+        "page_2": "13-24 / 25",
+        "page_3": "25-25 / 25",
+        "size_24_count": 24
+      },
+      "checks": [
+        "search resets offset",
+        "removed filter",
+        "long names and full UID accessibility",
+        "Page management modal",
+        "null versus zero counters",
+        "3/2/1 columns at 1440/748/390",
+        "no page horizontal overflow",
+        "light and dark"
+      ],
+      "screenshots": [
+        "pages-grid-lime-desktop.jpg",
+        "pages-grid-lime-light.jpg",
+        "pages-grid-lime-dark.jpg",
+        "pages-grid-lime-mobile.jpg"
+      ],
+      "console_errors": 0
+    }
+  },
+  "rust_build": {
+    "status": "blocked",
+    "reason": "Native MSVC tools are not installed. Portable linker libraries exist, but Smart App Control blocks unsigned Rust tools and Cargo build scripts (4551).",
+    "os_error": 4551,
+    "windows_protection": "unchanged; Smart App Control state remains 1",
+    "wsl_installation": "declined by user; not installed",
+    "build_tools_installer": "Microsoft-signed installer staged and hash verified; not installed"
+  },
+  "gateway_e2e": {
+    "status": "skipped",
+    "tests": 3,
+    "ci_configured": true,
+    "ci_executed": false
+  },
+  "native_postgresql": {
+    "status": "not_verified",
+    "reason": "initdb could not create pg_wal/archive_status under the execution token"
+  },
+  "docker_build": {
+    "status": "not_run",
+    "reason": "Docker is not installed in this environment"
+  },
+  "live_meta": {
+    "status": "read-only credentials, catalog and sampled metrics verified",
+    "report": "live-meta-read-check.json",
+    "identity_ok": true,
+    "system_user_pages": 11,
+    "catalog_complete": true,
+    "pages_read_checked": 3,
+    "pages_readable": 3,
+    "sampled_videos": 3,
+    "views_available": 3,
+    "comments_available": 3,
+    "shares_available": 0,
+    "shares_note": "Meta returned an empty social-actions object for the sampled videos. Missing share counters remain null, not zero.",
+    "credential_storage": "private local encrypted test cache only; not assigned to a v2 tenant",
+    "mutations_performed": false
+  },
+  "shared_graph_regression": {
+    "passed": 194,
+    "scope": "Graph client, Page service, API-access classification, connection revisions, bio and contact reads",
+    "fix": "Permit only numeric-object videos, video_insights and comments GET edges required by analytics; retain URL and query-credential rejection",
+    "analytics_path_tests": 11
+  },
+  "migration": {
+    "status": "not_run",
+    "default_mode": "dry-run",
+    "source_data_preserved": true
+  },
+  "remote_mcp": {
+    "source_changes": "full business permissions default for new owner tokens, owner-scoped upgrade, Codex and Claude namespace-only approval examples",
+    "worker_mcp_checks": "passed",
+    "ui_default_full_permission": "checked",
+    "real_remote_connection": "not verified; Rust gateway is not built",
+    "real_local_connection": "not verified; no gateway on 8020, worker on 8021 or PostgreSQL on 55432; Codex and Claude CLIs are installed",
+    "screenshot": "mcp-remote-settings.jpg"
+  },
+  "direct_publication": {
+    "policy": "direct; no Telegram approval or repeated confirmation for owner-provided publication requests",
+    "default_approval_policy": null,
+    "legacy_review_ticket_count_after_mock_publish": 0,
+    "mock_meta_flow": [
+      "start",
+      "upload",
+      "finish",
+      "verify completed"
+    ],
+    "uncertain_publish": "needs_review then verify only; finish called once",
+    "real_meta_publication": "not performed",
+    "legacy_scheduler_configuration": "unchanged",
+    "client_instructions": "examples/agent-publication-instructions.md"
+  }
+}

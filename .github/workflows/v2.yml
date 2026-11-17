@@ -1,0 +1,48 @@
+name: PageManager v2
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: pagemanager_test
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: disposable-test-only
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U testuser -d pagemanager_test" --health-interval 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: v2
+    env:
+      DATABASE_URL: postgresql://testuser:disposable-test-only@127.0.0.1:5432/pagemanager_test
+      PM_TEST_DATABASE_URL: postgresql://testuser:disposable-test-only@127.0.0.1:5432/pagemanager_test
+      PM_INTERNAL_KEY: ci-only-internal-key-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      PM_ENCRYPTION_KEY: YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
+      PM_DATA_DIR: /tmp/pm-v2-ci
+      PM_PUBLIC_ORIGIN: http://127.0.0.1:8020
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pip install -r requirements.txt
+      - run: python -m pytest tests/test_worker.py -q
+      - run: cargo build --locked --manifest-path gateway/Cargo.toml
+      - run: npm ci && npm run build
+        working-directory: v2/frontend
+      - name: Verify Rust gateway and 20 simultaneous sessions
+        run: |
+          python -m uvicorn tests.runtime_server:app --host 127.0.0.1 --port 8021 --no-access-log > /tmp/pm-worker.log 2>&1 &
+          WORKER_PID=$!
+          ./gateway/target/debug/pagemanager-gateway > /tmp/pm-gateway.log 2>&1 &
+          GATEWAY_PID=$!
+          trap 'kill "$WORKER_PID" "$GATEWAY_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:8020/healthz; then break; fi
+            sleep 1
+          done
+          PM_TEST_GATEWAY_URL=http://127.0.0.1:8020 python -m pytest tests/test_gateway.py -q

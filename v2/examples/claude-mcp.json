@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "pagemanager": {
+      "type": "http",
+      "url": "https://YOUR-PAGEMANAGER-HOST/mcp",
+      "headers": { "Authorization": "Bearer ${PAGEMANAGER_MCP_TOKEN}" }
+    }
+  }
+}

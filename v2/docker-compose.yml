@@ -1,0 +1,43 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: v2/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://pagemanager:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/pagemanager
+      PM_INTERNAL_KEY: ${PM_INTERNAL_KEY:?Set PM_INTERNAL_KEY}
+      PM_ENCRYPTION_KEY: ${PM_ENCRYPTION_KEY:?Set PM_ENCRYPTION_KEY}
+      PM_PUBLIC_ORIGIN: ${PM_PUBLIC_ORIGIN:-http://127.0.0.1:8020}
+      PM_COOKIE_SECURE: ${PM_COOKIE_SECURE:-false}
+      PM_GRAPH_VERSION: ${PM_GRAPH_VERSION:-v26.0}
+    ports:
+      - "127.0.0.1:8020:8020"
+    volumes:
+      - media:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/healthz',timeout=5)"]
+      interval: 15s
+      timeout: 6s
+      start_period: 90s
+      retries: 3
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: pagemanager
+      POSTGRES_USER: pagemanager
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pagemanager"]
+      interval: 5s
+      retries: 10
+volumes:
+  pgdata:
+  media:

@@ -1,0 +1,29 @@
+{
+  "checked_at": "2026-11-17T03:40:25.959669+00:00",
+  "graph_version": "v26.0",
+  "read_only": true,
+  "identity_ok": true,
+  "catalog": "system_user_assigned_pages",
+  "pages_seen": 11,
+  "catalog_complete": true,
+  "pages_read_checked": 3,
+  "pages_readable": 3,
+  "pages_with_follower_count": 3,
+  "metrics": {
+    "pages_checked": 1,
+    "catalogs_readable": 1,
+    "videos_checked": 3,
+    "owner_verified": 3,
+    "views_available": 3,
+    "comments_available": 3,
+    "shares_available": 0,
+    "social_value_shapes": [
+      {
+        "type": "dict",
+        "keys": [],
+        "key_count": 0
+      }
+    ],
+    "errors": {}
+  }
+}

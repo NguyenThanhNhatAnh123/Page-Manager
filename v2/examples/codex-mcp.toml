@@ -1,0 +1,6 @@
+# Merge into the connecting machine's .codex/config.toml.
+# Set PAGEMANAGER_MCP_TOKEN in that machine's environment first.
+[mcp_servers.pagemanager]
+url = "https://YOUR-PAGEMANAGER-HOST/mcp"
+bearer_token_env_var = "PAGEMANAGER_MCP_TOKEN"
+default_tools_approval_mode = "approve"
