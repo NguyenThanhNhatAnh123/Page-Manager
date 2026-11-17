@@ -1,0 +1,57 @@
+{
+  "checked_at": "2026-11-17T06:52:02.733620+00:00",
+  "hosting": "GitHub Codespaces",
+  "source_commit": "81ef34e74f81ac46969dac33e9f65ee094ec4148",
+  "owner": "admin",
+  "system_user_token_imported": true,
+  "storage": "encrypted tenant-local source; credentials excluded from repository",
+  "owner_namespace_verified": true,
+  "encrypted_source_persisted_after_rebuild": true,
+  "source_status": "working",
+  "page_count": 11,
+  "discovery_complete": 11,
+  "coverage": {
+    "tracked": 33,
+    "views_known": 33,
+    "comments_known": 33,
+    "shares_known": 5
+  },
+  "missing_share_counters": "Remain null; Meta returned individual share counts for only part of the videos.",
+  "actual_engagement_totals_and_page_identifiers": "Omitted from public report; private operational reports retained locally.",
+  "login_checks": [
+    {
+      "requested_at": "2026-11-17T06:48:54.686315+00:00",
+      "started_at": "2026-11-17T06:48:55.135370+00:00",
+      "finished_at": "2026-11-17T06:50:11.281756+00:00",
+      "cookie_max_age_seconds": 2592000,
+      "fresh_video_snapshots": 33,
+      "sample_history_before": 2,
+      "sample_history_after": 3
+    },
+    {
+      "requested_at": "2026-11-17T06:50:49.737249+00:00",
+      "started_at": "2026-11-17T06:50:50.516831+00:00",
+      "finished_at": "2026-11-17T06:51:59.937680+00:00",
+      "cookie_max_age_seconds": 2592000,
+      "fresh_video_snapshots": 33,
+      "sample_history_before": 3,
+      "sample_history_after": 4
+    }
+  ],
+  "manual_analytics_sync_called": false,
+  "meta_content_mutations": false,
+  "session_policy": {
+    "lifetime_seconds": 2592000,
+    "days": 30,
+    "fixed_deadline": true,
+    "short_idle_expiry": false,
+    "revocation_preserved": true
+  },
+  "linux_ci": {
+    "url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44033132150",
+    "conclusion": "success",
+    "worker_tests": 23,
+    "gateway_tests": 4
+  },
+  "codespace_idle_timeout_minutes": 30
+}

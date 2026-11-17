@@ -1075,8 +1075,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 3750,
-      "sha256": "d1e4f3ed4f947f486e8b62b32b24f0408dd374741b6008cadd80a2fbe7bb8d50"
+      "bytes": 4194,
+      "sha256": "bc574ebeb074aef92d3c8c683bf6734b9c5632ef71c58632cfeaa8d62ac2cc42"
     },
     {
       "path": "SETUP-USERS.bat",
@@ -1244,6 +1244,11 @@
       "sha256": "6dfb1f2d67a1a812b22a6900121b87d2a00d375fb034d37fbdcd17dc1ae04c20"
     },
     {
+      "path": "v2/qa/admin-meta-login-live.json",
+      "bytes": 2018,
+      "sha256": "4667d01853a61a65ce43631efc035860987eded73eb0a6deec63a3944345c6c5"
+    },
+    {
       "path": "v2/qa/live-meta-read-check.json",
       "bytes": 671,
       "sha256": "83ecfa40f67dad1602803268b0c0258dba4deff659333add448f3d3296c50347"
@@ -1330,13 +1335,13 @@
     },
     {
       "path": "v2/qa/verification.json",
-      "bytes": 8093,
-      "sha256": "83b16e55dd2bfbf185aba234802b2556743fa7385b757af81365ebf183bfe022"
+      "bytes": 8154,
+      "sha256": "59d72ddc2c313008e5d87d4eaba2578e7dabd470fb0333daa7f191101f7d682d"
     },
     {
       "path": "v2/README.md",
-      "bytes": 15932,
-      "sha256": "ca80149ed3a804307aa62db0d950ab1aba11f559cde43d0edde970af7b4f57ea"
+      "bytes": 16527,
+      "sha256": "c244ce600cd29824d02b96590909ccea56d481526a46c2ceb3a598b1696768f7"
     },
     {
       "path": "v2/requirements-lock.txt",

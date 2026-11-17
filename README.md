@@ -14,13 +14,15 @@ MCP Codex/Claude hỗ trợ quản lý Page, video và đăng/đặt lịch Reel
 
 FE đã build và kiểm tra giao diện bằng dữ liệu QA. Worker đã qua 23 kiểm tra PostgreSQL qua PGlite phát triển; 194 kiểm tra liên quan Graph/service/connection đã đạt sau sửa đường dẫn thống kê. PGlite chỉ phục vụ kiểm thử, không thay PostgreSQL vận hành.
 
-Kiểm tra Meta chỉ đọc đã xác thực nguồn System User, thấy 11 Page, đọc thử 3 Page và view/bình luận của 3 video. Chia sẻ chưa có dữ liệu riêng trong mẫu nên giữ null. Không đăng hoặc đặt lịch nội dung thật để thử kết nối.
+Token Meta đã được nhập mã hóa vào kho `admin` trên Codespaces. Đồng bộ thành công 11 Page và phát hiện 33 video; lượt đăng nhập thật tự tạo yêu cầu cập nhật nền. View/bình luận đọc được cho 33 video, chia sẻ đọc được cho 5 video; các số chia sẻ còn thiếu giữ null. Không đăng hoặc đặt lịch nội dung thật để thử kết nối.
 
-Smart App Control trên máy Windows vẫn giữ nguyên; không cài WSL. Bản Rust/Python/PostgreSQL thật đã chạy trên GitHub Codespaces, qua cổng riêng được chuyển về `http://127.0.0.1:8020` trên máy quản trị. Đã provision 20 tài khoản và kiểm tra hai CLI thật: Codex và Claude đều gọi thành công `via_status`, `pages_connections`. Token thử có quyền nghiệp vụ trong kho chủ token và máy chủ trả đủ 30 công cụ. Các lần gọi thử chỉ đọc; chưa nhập token Meta hay dữ liệu vận hành lên Codespace. [Báo cáo MCP thật](v2/qa/mcp-clients-live.json).
+Smart App Control trên máy Windows vẫn giữ nguyên; không cài WSL. Bản Rust/Python/PostgreSQL thật đã chạy trên GitHub Codespaces, qua cổng riêng được chuyển về `http://127.0.0.1:8020` trên máy quản trị. Đã provision 20 tài khoản và kiểm tra hai CLI thật: Codex và Claude đều gọi thành công `via_status`, `pages_connections`. Token thử có quyền nghiệp vụ trong kho chủ token và máy chủ trả đủ 30 công cụ. [Báo cáo MCP thật](v2/qa/mcp-clients-live.json) ghi trạng thái tại thời điểm kiểm tra CLI, trước khi nhập Meta.
+
+Phiên đăng nhập web có hạn cố định 30 ngày và không hết hạn sớm vì không hoạt động; cần đăng nhập lại sau khi nâng cấp để nhận cookie mới. Đăng xuất hoặc vô hiệu hóa tài khoản/phiên vẫn có hiệu lực ngay. Thời hạn phiên không thay đổi thời gian tự dừng của Codespaces.
 
 Codespace thử tự dừng sau 30 phút không hoạt động, có quota/chi phí lưu trữ và compute; chưa cam kết vận hành lịch Reel 24/7. Trên máy đã cấu hình, dùng `CONNECT-V2-CODESPACE.bat` để nối lại. Máy mới có thể chạy `python v2/scripts/connect_codespace.py --codespace <ten-codespace>` sau khi đăng nhập GitHub CLI bằng tài khoản có quyền truy cập. Công cụ chỉ khởi động lại môi trường có sẵn và chuyển cổng 8020 ở chế độ private; không tạo dịch vụ mới hoặc thay đổi thanh toán.
 
-[CI Linux](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44014632298) đã build Rust 1.90/FE, đạt 23 kiểm tra worker và 3 kiểm tra gateway, gồm 20 phiên đăng nhập đồng thời và quyền MCP. Image triển khai đã khởi chạy với PostgreSQL 18 mới, health check xác nhận database/worker và đủ 20 tài khoản. CI tắt các lệnh gọi Meta trong bộ kiểm tra nghiệp vụ; không đồng nghĩa đã triển khai dịch vụ luôn bật hoặc đã kiểm tra hai MCP CLI trên Windows.
+[CI Linux](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44033132150) đã build Rust 1.90/FE, đạt 23 kiểm tra worker và 4 kiểm tra gateway, gồm 20 phiên đăng nhập đồng thời, quyền MCP và thời hạn session 30 ngày. Image triển khai đã khởi chạy với PostgreSQL 18 mới, health check xác nhận database/worker và đủ 20 tài khoản. CI tắt các lệnh gọi Meta trong bộ kiểm tra nghiệp vụ; kết quả Meta/CLI thật được kiểm tra riêng ở trên.
 
 ## Dữ liệu và khóa
 

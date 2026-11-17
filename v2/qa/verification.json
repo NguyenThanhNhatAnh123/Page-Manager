@@ -126,7 +126,7 @@
   },
   "gateway_e2e": {
     "status": "passed_on_linux",
-    "tests": 3,
+    "tests": 4,
     "ci_configured": true,
     "ci_executed": true
   },
@@ -139,19 +139,17 @@
     "reason": "Production image and fresh PostgreSQL 18 start successfully in GitHub CI; /healthz confirms DB/worker and provisioning creates 20 accounts. Docker is not installed on the Windows host."
   },
   "live_meta": {
-    "status": "read-only credentials, catalog and sampled metrics verified",
-    "report": "live-meta-read-check.json",
-    "identity_ok": true,
+    "status": "admin tenant import, complete Page catalog and login-triggered live metrics verified",
+    "report": "admin-meta-login-live.json",
+    "initial_local_sample_report": "live-meta-read-check.json",
     "system_user_pages": 11,
     "catalog_complete": true,
-    "pages_read_checked": 3,
-    "pages_readable": 3,
-    "sampled_videos": 3,
-    "views_available": 3,
-    "comments_available": 3,
-    "shares_available": 0,
-    "shares_note": "Meta returned an empty social-actions object for the sampled videos. Missing share counters remain null, not zero.",
-    "credential_storage": "private local encrypted test cache only; not assigned to a v2 tenant",
+    "sampled_videos": 33,
+    "views_available": 33,
+    "comments_available": 33,
+    "shares_available": 5,
+    "shares_note": "Remain null; Meta returned individual share counts for only part of the videos.",
+    "credential_storage": "encrypted tenant-local source; credentials excluded from repository",
     "mutations_performed": false
   },
   "shared_graph_regression": {
@@ -190,11 +188,11 @@
     "client_instructions": "examples/agent-publication-instructions.md"
   },
   "linux_ci": {
-    "commit": "5b4e8609b225d39d2d03e789a6bd0869ba75a532",
-    "url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44018046462",
+    "commit": "81ef34e74f81ac46969dac33e9f65ee094ec4148",
+    "url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44033132150",
     "conclusion": "success",
     "worker_tests": 23,
-    "gateway_tests": 3,
+    "gateway_tests": 4,
     "postgres_version": 18,
     "rust_version": "1.90.0",
     "production_container_health": "database=true; worker=true",
@@ -205,7 +203,7 @@
   },
   "live_deployment": {
     "hosting": "GitHub Codespaces",
-    "source_commit": "5b4e8609b225d39d2d03e789a6bd0869ba75a532",
+    "source_commit": "81ef34e74f81ac46969dac33e9f65ee094ec4148",
     "local_url": "http://127.0.0.1:8020",
     "port_visibility": "private",
     "machine": "2 CPU, 8 GB RAM, 32 GB disk",
@@ -228,6 +226,8 @@
       "codex",
       "claude"
     ],
-    "report": "mcp-clients-live.json"
+    "report": "mcp-clients-live.json",
+    "admin_meta_report": "admin-meta-login-live.json",
+    "web_session_days": 30
   }
 }
