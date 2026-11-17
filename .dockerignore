@@ -5,6 +5,8 @@
 **/data
 **/.runtime
 **/.env
+**/server.env
+**/backups
 **/__pycache__
 **/.pytest_cache
 **/dist

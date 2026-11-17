@@ -41,7 +41,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: {toolchain: '1.90.0'}
       - run: pip install -r requirements.txt
-      - run: python -m pytest tests/test_worker.py -q
+      - run: python -m pytest tests/test_worker.py tests/test_server.py -q
       - run: cargo build --locked --manifest-path gateway/Cargo.toml
       - run: npm ci && npm test && npm run build
         working-directory: v2/frontend
@@ -66,3 +66,23 @@ jobs:
           curl --fail --silent http://127.0.0.1:8020/healthz
           ACCOUNTS=$(docker compose --project-name pm-v2-ci exec -T postgres psql -U pagemanager -d pagemanager -tAc 'SELECT COUNT(*) FROM pm_users')
           test "$ACCOUNTS" = 20
+      - name: Verify 24-hour server packaging and backup recovery
+        run: |
+          bash -n server/install-docker.sh
+          python - <<'PY'
+          from pathlib import Path
+          from server.manager import unit_files
+          destination=Path('/tmp/pagemanager-server-units');destination.mkdir()
+          for name,body in unit_files(Path('server/manager.py').resolve(),Path('/tmp/pm-server-ci.env')).items():
+              (destination/name).write_text(body)
+          PY
+          systemd-analyze verify --man=no /tmp/pagemanager-server-units/*.service /tmp/pagemanager-server-units/*.timer
+          sudo python3 server/manager.py --env-file /tmp/pm-server-ci.env init
+          COMPOSE=(sudo docker compose --env-file /tmp/pm-server-ci.env --project-name pagemanager-server -f server/compose.yml)
+          trap '"${COMPOSE[@]}" down --volumes' EXIT
+          "${COMPOSE[@]}" config --quiet
+          "${COMPOSE[@]}" up -d --build --wait --wait-timeout 300
+          sudo python3 tests/server_container_smoke.py
+          sudo python3 server/manager.py --env-file /tmp/pm-server-https-ci.env init --origin https://pages.example.com
+          sudo docker compose --env-file /tmp/pm-server-https-ci.env -f server/compose.yml config --quiet
+          docker run --rm -e PM_HOSTNAME=pages.example.com -v "$PWD/server/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile

@@ -1,0 +1,61 @@
+name: pagemanager-server
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: v2/Dockerfile
+    restart: always
+    stop_grace_period: 90s
+    environment:
+      DATABASE_URL: postgresql://pagemanager:${POSTGRES_PASSWORD:?Initialize server.env}@postgres:5432/pagemanager
+      PM_INTERNAL_KEY: ${PM_INTERNAL_KEY:?Initialize server.env}
+      PM_ENCRYPTION_KEY: ${PM_ENCRYPTION_KEY:?Initialize server.env}
+      PM_PUBLIC_ORIGIN: ${PM_PUBLIC_ORIGIN:-http://127.0.0.1:8020}
+      PM_COOKIE_SECURE: ${PM_COOKIE_SECURE:-false}
+      PM_GRAPH_VERSION: ${PM_GRAPH_VERSION:-v26.0}
+    ports: ["127.0.0.1:8020:8020"]
+    volumes: ["media:/data"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/healthz',timeout=5)"]
+      interval: 20s
+      timeout: 8s
+      start_period: 120s
+      retries: 3
+    logging: &logs
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+  postgres:
+    image: postgres:18
+    restart: always
+    stop_grace_period: 60s
+    environment:
+      POSTGRES_DB: pagemanager
+      POSTGRES_USER: pagemanager
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Initialize server.env}
+    volumes: ["pgdata:/var/lib/postgresql"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pagemanager -d pagemanager"]
+      interval: 5s
+      retries: 20
+    logging: *logs
+  https:
+    image: caddy:2
+    profiles: [https]
+    restart: always
+    environment:
+      PM_HOSTNAME: ${PM_HOSTNAME:-localhost}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app: {condition: service_healthy}
+    logging: *logs
+volumes:
+  pgdata:
+  media:
+  caddy_data:
+  caddy_config:

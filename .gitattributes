@@ -1,0 +1,4 @@
+v2/server/*.sh text eol=lf
+v2/server/*.py text eol=lf
+v2/server/Windows-Host.ps1 text eol=crlf
+CHECK-SERVER-WINDOWS.bat text eol=crlf

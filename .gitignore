@@ -1,5 +1,7 @@
 # Local credentials and operational data never belong in source control.
 **/.env
+**/server.env
+v2/server/backups/
 **/.env.local
 **/.env.*.local
 **/.runtime/

@@ -1,0 +1,6 @@
+{$PM_HOSTNAME} {
+    reverse_proxy app:8020 {
+        # Keep MCP responses and server-sent events streaming.
+        flush_interval -1
+    }
+}

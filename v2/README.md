@@ -40,6 +40,8 @@ tests/                Kiểm thử PostgreSQL và harness FE chỉ đọc
 
 ## Chạy Windows
 
+**Server riêng cần chạy 24/24:** dùng [bộ cài và hướng dẫn Windows 11 server](server/README.md). Phương án Hyper-V + Ubuntu Server 24.04 LTS + Docker Engine có tự khởi động khi chưa đăng nhập Windows, restart policy cho cả PostgreSQL/app, health timer, log rotation và backup. Bộ cài tách khỏi máy dev/Codespaces; phần dưới là launcher Windows phục vụ phát triển/thao tác trực tiếp, không phải Windows Service vận hành 24/24.
+
 Cần Python 3.12+, Node.js 22+, Rust 1.90+ và linker MSVC/Windows SDK, PostgreSQL 17/18. PostgreSQL cần cho phép tạo schema trong database ứng dụng. Không dùng chung database với ứng dụng khác.
 
 1. Sao chép `.env.example` thành `.env`, cấu hình `DATABASE_URL` và hai khóa độc lập. Có thể tạo khóa bằng Python `secrets.token_hex(32)` và `cryptography.fernet.Fernet.generate_key()`; không đưa khóa vào source hoặc chat.

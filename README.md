@@ -10,6 +10,7 @@ MCP Codex/Claude hỗ trợ quản lý Page, video và đăng/đặt lịch Reel
 
 - [Mã v2 và hướng dẫn chạy](v2/README.md)
 - [Docker Compose](v2/docker-compose.yml)
+- [Bộ cài server Windows 11 chạy 24/24](v2/server/README.md): Hyper-V/Ubuntu, Docker Engine, tự khởi động, health recovery, HTTPS và backup. `CHECK-SERVER-WINDOWS.bat` chỉ kiểm tra khi không truyền tham số.
 - [Phương án chạy thử Linux qua Codespaces](v2/examples/codespaces-plan.md)
 - [Kết quả kiểm tra và các phần chưa xác minh](v2/qa/verification.json)
 - [Backend/frontend cũ được giữ để tương thích](meta-page-manager/README.md)
