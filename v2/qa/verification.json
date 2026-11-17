@@ -6,7 +6,7 @@
   },
   "v2_worker_tests": {
     "passed": 23,
-    "engine": "PostgreSQL 17.5 through PGlite development socket",
+    "engine": "PostgreSQL 18 in Linux CI; earlier local checks used PGlite development socket",
     "includes": [
       "20 isolated namespaces",
       "owner-bound encryption",
@@ -117,26 +117,26 @@
     }
   },
   "rust_build": {
-    "status": "blocked",
-    "reason": "Native MSVC tools are not installed. Portable linker libraries exist, but Smart App Control blocks unsigned Rust tools and Cargo build scripts (4551).",
+    "status": "passed_on_linux",
+    "reason": "Rust 1.90 builds in Linux CI and production container. Native Windows remains blocked by Smart App Control.",
     "os_error": 4551,
     "windows_protection": "unchanged; Smart App Control state remains 1",
     "wsl_installation": "declined by user; not installed",
     "build_tools_installer": "Microsoft-signed installer staged and hash verified; not installed"
   },
   "gateway_e2e": {
-    "status": "skipped",
+    "status": "passed_on_linux",
     "tests": 3,
     "ci_configured": true,
-    "ci_executed": false
+    "ci_executed": true
   },
   "native_postgresql": {
     "status": "not_verified",
     "reason": "initdb could not create pg_wal/archive_status under the execution token"
   },
   "docker_build": {
-    "status": "not_run",
-    "reason": "Docker is not installed in this environment"
+    "status": "passed_on_linux",
+    "reason": "Production image and fresh PostgreSQL 18 start successfully in GitHub CI; /healthz confirms DB/worker and provisioning creates 20 accounts. Docker is not installed on the Windows host."
   },
   "live_meta": {
     "status": "read-only credentials, catalog and sampled metrics verified",
@@ -169,7 +169,7 @@
     "source_changes": "full business permissions default for new owner tokens, owner-scoped upgrade, Codex and Claude namespace-only approval examples",
     "worker_mcp_checks": "passed",
     "ui_default_full_permission": "checked",
-    "real_remote_connection": "not verified; Rust gateway is not built",
+    "real_remote_connection": "not verified with installed Codex/Claude clients; no persistent Linux/Codespaces deployment yet",
     "real_local_connection": "not verified; no gateway on 8020, worker on 8021 or PostgreSQL on 55432; Codex and Claude CLIs are installed",
     "screenshot": "mcp-remote-settings.jpg"
   },
@@ -187,5 +187,18 @@
     "real_meta_publication": "not performed",
     "legacy_scheduler_configuration": "unchanged",
     "client_instructions": "examples/agent-publication-instructions.md"
+  },
+  "linux_ci": {
+    "commit": "d9c807ed0919e1e72a9dfc2541d3fd73ec8ec8d6",
+    "url": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44014632298",
+    "conclusion": "success",
+    "worker_tests": 23,
+    "gateway_tests": 3,
+    "postgres_version": 18,
+    "rust_version": "1.90.0",
+    "production_container_health": "database=true; worker=true",
+    "fresh_user_count": 20,
+    "meta_network_in_business_tests": "disabled",
+    "persistent_deployment": false
   }
 }

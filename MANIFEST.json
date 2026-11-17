@@ -1065,8 +1065,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 2436,
-      "sha256": "ebaa1771da244b471f07e65bb6b4ae034fccb51979e1cafcc665c8d778d643cc"
+      "bytes": 2985,
+      "sha256": "3ae26608dbbd79a81c203dc16176dc51db0cdfabdcfff4d283ef23f768a931db"
     },
     {
       "path": "SETUP-USERS.bat",
@@ -1295,8 +1295,8 @@
     },
     {
       "path": "v2/qa/README.md",
-      "bytes": 7477,
-      "sha256": "301652811d3668c3c1612c3e536649d0c4f4bb7a9f2959d4c4dda8908f292f67"
+      "bytes": 8224,
+      "sha256": "da2022eadab8af0d9dc244c777675613ec4beb93d7504b49a906eded862bd745"
     },
     {
       "path": "v2/qa/reel-review.png",
@@ -1310,13 +1310,13 @@
     },
     {
       "path": "v2/qa/verification.json",
-      "bytes": 6551,
-      "sha256": "59b5b2c71c1c15b7e6d84da2552433775e93da0b6eb3b5d1b891f66717849ea1"
+      "bytes": 7255,
+      "sha256": "e086abaaadcacaf3b9fd60060ff09200dbb52777ac36ca12170031a754251464"
     },
     {
       "path": "v2/README.md",
-      "bytes": 13384,
-      "sha256": "2fc5c6a4e6581540a7437d7d8157bee30327cc7a3c12b78cae4a03121c924b08"
+      "bytes": 14129,
+      "sha256": "fc7dd506a8937c0b5ae35f0e7137aa86597d9b7564d203531ebb32c91ea425fe"
     },
     {
       "path": "v2/requirements-lock.txt",

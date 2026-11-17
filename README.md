@@ -18,6 +18,8 @@ Kiểm tra Meta chỉ đọc đã xác thực nguồn System User, thấy 11 Pag
 
 Rust gateway chưa build/chạy thành công trên máy Windows thực hiện thay đổi do Smart App Control chặn công cụ/build script Rust. Không tắt bảo vệ Windows và không cài WSL. Cấu hình Codespaces đã chuẩn bị nhưng chưa triển khai; kết nối MCP thật qua Codex/Claude và lịch chạy liên tục chưa được xác minh. Codespaces có quota và tự dừng, phù hợp chạy thử hơn hosting lịch Reel 24/7.
 
+[CI Linux](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44014632298) đã build Rust 1.90/FE, đạt 23 kiểm tra worker và 3 kiểm tra gateway, gồm 20 phiên đăng nhập đồng thời và quyền MCP. Image triển khai đã khởi chạy với PostgreSQL 18 mới, health check xác nhận database/worker và đủ 20 tài khoản. CI tắt các lệnh gọi Meta trong bộ kiểm tra nghiệp vụ; không đồng nghĩa đã triển khai dịch vụ luôn bật hoặc đã kiểm tra hai MCP CLI trên Windows.
+
 ## Dữ liệu và khóa
 
 Repo chỉ chứa source, cấu hình mẫu, tài nguyên giao diện và kiểm thử. Không có token Meta/MCP thật, `.env` thật, mật khẩu người dùng, database, media đang dùng, runtime hoặc bộ công cụ cài trên máy. Khi triển khai, tạo khóa và tài khoản mới; thêm nguồn System User vào đúng kho qua ứng dụng.

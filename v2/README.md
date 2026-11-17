@@ -88,6 +88,8 @@ Kiểm tra Meta thật chỉ đọc đã xác thực System User và thấy đ�
 
 `scripts/check_live_meta.py` là công cụ đọc thử riêng: nhập token qua prompt ẩn; `--cache` lưu mã hóa trong runtime riêng, `--use-cache --metrics` đọc lại và thử mẫu chỉ số. Báo cáo không chứa tên/ID/token; không ghi vào database người dùng hoặc chạy scheduler. Cache thử không thay thế thao tác thêm nguồn System User vào đúng kho sau khi v2 chạy.
 
+[CI Linux đã đạt](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44014632298): build Rust 1.90/FE; 23 kiểm tra worker với PostgreSQL 18; 3 kiểm tra gateway thật gồm 20 đăng nhập đồng thời, CSRF, phân quyền kho và MCP. Bộ Docker triển khai cũng build và khởi chạy thành công với PostgreSQL 18 mới, health check đạt và đủ 20 tài khoản. Đã sửa tham chiếu request qua await làm handler không đáp ứng Axum và thời gian xếp hàng đăng nhập quá ngắn khi đủ 20 người. Bảo vệ mật khẩu và giới hạn 4 phép xác thực đồng thời vẫn giữ. Kết nối từ hai CLI Windows và triển khai Codespaces chưa được thực hiện.
+
 ## Chuyển dữ liệu và vận hành
 
 Gói source hiện tại không chứa database/token/media cũ. Dùng `scripts/migrate_workspace.py` để xem trước, rồi chuyển từng kho sau khi dừng scheduler nguồn và gán rõ chủ kho. Không tự sao chép token DPAPI sang Linux: giải mã trên đúng máy/tài khoản Windows cũ và mã hóa lại bằng khóa v2. Công cụ chuyển đổi từ chối đích có dữ liệu và lịch chưa hoàn tất còn phụ thuộc luồng duyệt ngoài v2.
