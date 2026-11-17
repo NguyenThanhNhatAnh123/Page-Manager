@@ -1220,8 +1220,8 @@
     },
     {
       "path": "v2/gateway/src/main.rs",
-      "bytes": 25404,
-      "sha256": "a7fcd42abc0c50f0f29fcbdf5ab69de26b0291f05ddc8d839ac9dd530387608a"
+      "bytes": 25532,
+      "sha256": "d77270944f021da1a43b1adfd8f7c0319d16d6d6859cfbad7300762cc1c40121"
     },
     {
       "path": "v2/migrations/001.sql",

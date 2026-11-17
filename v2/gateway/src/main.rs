@@ -9,6 +9,9 @@ use subtle::ConstantTimeEq;
 use tower_http::services::{ServeDir, ServeFile};
 use uuid::Uuid;
 
+// Twenty users can queue behind four memory-bounded password checks.
+const PASSWORD_QUEUE_WAIT:Duration=Duration::from_secs(25);
+
 #[derive(Clone)]
 struct App { db: PgPool, client: reqwest::Client, worker: String, key: String, origin: String, secure: bool, passwords: Arc<tokio::sync::Semaphore>, dummy: String }
 
@@ -77,7 +80,7 @@ async fn login(State(app):State<App>,req:Request)->Result<Response,Failure> {
  let row=sqlx::query("SELECT id,username,password_hash,role,must_change,timezone FROM pm_users WHERE username=$1 AND active").bind(&username).fetch_optional(&app.db).await.map_err(db_error)?;
  let hash=row.as_ref().map(|r|r.get::<String,_>("password_hash")).unwrap_or(app.dummy.clone());
  let expected=hash.clone();
- let permit=tokio::time::timeout(Duration::from_secs(5),app.passwords.clone().acquire_owned()).await.map_err(|_|fail(StatusCode::TOO_MANY_REQUESTS,"Máy chủ đang bận. Thử lại sau."))?.map_err(|_|fail(StatusCode::SERVICE_UNAVAILABLE,"Máy chủ đang dừng."))?;
+ let permit=tokio::time::timeout(PASSWORD_QUEUE_WAIT,app.passwords.clone().acquire_owned()).await.map_err(|_|fail(StatusCode::TOO_MANY_REQUESTS,"Máy chủ đang bận. Thử lại sau."))?.map_err(|_|fail(StatusCode::SERVICE_UNAVAILABLE,"Máy chủ đang dừng."))?;
  let valid=tokio::task::spawn_blocking(move||{let _permit=permit;PasswordHash::new(&hash).ok().map(|h|Argon2::default().verify_password(password.as_bytes(),&h).is_ok()).unwrap_or(false)}).await.unwrap_or(false);
  if !valid||row.is_none() {return Err(fail(StatusCode::UNAUTHORIZED,"Tên đăng nhập hoặc mật khẩu không đúng."))}
  let row=row.unwrap();let id:String=row.get("id");
@@ -104,7 +107,7 @@ async fn auth_routes(State(app):State<App>,req:Request)->Result<Response,Failure
  if !(12..=1024).contains(&new.len())||new==old {return Err(fail(StatusCode::UNPROCESSABLE_ENTITY,"Mật khẩu mới cần ít nhất 12 ký tự và khác mật khẩu cũ."))}
  let current:String=sqlx::query_scalar("SELECT password_hash FROM pm_users WHERE id=$1 AND active").bind(&a.id).fetch_one(&app.db).await.map_err(db_error)?;
  let original=current.clone();
- let permit=tokio::time::timeout(Duration::from_secs(5),app.passwords.clone().acquire_owned()).await.map_err(|_|fail(StatusCode::TOO_MANY_REQUESTS,"Thử lại sau ít phút."))?.map_err(|_|fail(StatusCode::SERVICE_UNAVAILABLE,"Máy chủ đang dừng."))?;
+ let permit=tokio::time::timeout(PASSWORD_QUEUE_WAIT,app.passwords.clone().acquire_owned()).await.map_err(|_|fail(StatusCode::TOO_MANY_REQUESTS,"Thử lại sau ít phút."))?.map_err(|_|fail(StatusCode::SERVICE_UNAVAILABLE,"Máy chủ đang dừng."))?;
  let hashed=tokio::task::spawn_blocking(move||{let _permit=permit;let parsed=PasswordHash::new(&current).ok()?;Argon2::default().verify_password(old.as_bytes(),&parsed).ok()?;Argon2::default().hash_password(new.as_bytes(),&SaltString::generate(&mut OsRng)).ok().map(|p|p.to_string())}).await.ok().flatten().ok_or_else(||fail(StatusCode::UNAUTHORIZED,"Mật khẩu hiện tại không đúng."))?;
  let mut tx=app.db.begin().await.map_err(db_error)?;
  let changed=sqlx::query("UPDATE pm_users SET password_hash=$1,must_change=FALSE WHERE id=$2 AND active AND password_hash=$3").bind(&hashed).bind(&a.id).bind(original).execute(&mut *tx).await.map_err(db_error)?;
