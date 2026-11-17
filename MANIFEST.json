@@ -20,8 +20,8 @@
     },
     {
       "path": ".github/workflows/v2.yml",
-      "bytes": 3024,
-      "sha256": "cd56658fd9a58964773c3f3ab11e5aca7492e4e6ea2ee686a55249b66a7baa57"
+      "bytes": 3036,
+      "sha256": "34a8b7ed1a8bf12c5b270ad58c83bbf2f23e7e52bbeb74cbfcf3b57290ce9daf"
     },
     {
       "path": ".gitignore",
@@ -1150,8 +1150,8 @@
     },
     {
       "path": "v2/frontend/package.json",
-      "bytes": 605,
-      "sha256": "549deb705e6a00db3ab5a9a2c78c1c39fbf6ecbbb766409836cbf514016b0b8d"
+      "bytes": 649,
+      "sha256": "314b78d0f9eee075786789262f1e6177be743e161e34a8733cd1315616bde8c4"
     },
     {
       "path": "v2/frontend/public/favicon.svg",
@@ -1190,13 +1190,13 @@
     },
     {
       "path": "v2/frontend/src/api.ts",
-      "bytes": 5897,
-      "sha256": "d503b39ac738a176754128c63e2738e713b64c1d405bd30df76c885803a0568e"
+      "bytes": 7028,
+      "sha256": "a0731c42656404b77e7509e0331c80215c044bbdd0178bdb49b74af3e37d6c91"
     },
     {
       "path": "v2/frontend/src/main.tsx",
-      "bytes": 106661,
-      "sha256": "6cd02a128395bfdd4a23cac61c241b4c6c418293a5cbf1700e0472a8292cd5d4"
+      "bytes": 106920,
+      "sha256": "da35f63b8777da3ef3871f7d601b2aace1ee63d565164e3eca7e0de6c14cb5ea"
     },
     {
       "path": "v2/frontend/src/reference-theme.css",
@@ -1207,6 +1207,11 @@
       "path": "v2/frontend/src/styles.css",
       "bytes": 37412,
       "sha256": "93bcf45ce38553678143a0cbcaf730cfa3ddd3c0ae791930e47473526252e65e"
+    },
+    {
+      "path": "v2/frontend/tests/session.test.mjs",
+      "bytes": 4961,
+      "sha256": "d40556c8b8d315d9fe60db22eca3f9fb977b49651642eed6948a8315a4001f4c"
     },
     {
       "path": "v2/frontend/tsconfig.json",
@@ -1430,13 +1435,13 @@
     },
     {
       "path": "v2/tests/test_gateway.py",
-      "bytes": 6913,
-      "sha256": "e09378f410255e089f80148eb30965556e4e4e27119c1f8a2381c09edfd41b57"
+      "bytes": 11184,
+      "sha256": "c6a1545b0c03f8297c706500b3e2654690af875e8e8fe27382de0b7bbd6e1416"
     },
     {
       "path": "v2/tests/test_worker.py",
-      "bytes": 26774,
-      "sha256": "cf3f4d8599919bd38488181e47d5bda605a423fd1473bdcf82749e67f25fe59d"
+      "bytes": 33457,
+      "sha256": "77bd494cacf771c455414807f678dd303e7706be544a7627feb8290f00936f1a"
     },
     {
       "path": "v2/worker/__init__.py",

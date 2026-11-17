@@ -6,6 +6,8 @@ import httpx
 import psycopg
 import pytest
 from argon2 import PasswordHasher
+import json
+from uuid import uuid5,NAMESPACE_DNS
 
 URL=os.environ.get('PM_TEST_GATEWAY_URL')
 pytestmark=pytest.mark.skipif(not URL,reason='Requires a built Rust gateway; see CI workflow')
@@ -114,3 +116,60 @@ async def test_sessions_last_thirty_days_without_short_idle_expiry(accounts):
     finally:
         await client.aclose()
         if other is not None:await other.aclose()
+
+
+async def test_all_twenty_sessions_and_mcp_ignore_client_selected_workspace(accounts):
+    results=await asyncio.gather(*(login(username) for _,username in accounts))
+    tokens=[]
+    operation=str(uuid5(NAMESPACE_DNS,'tenant-isolation-shared-operation'))
+    try:
+        async with httpx.AsyncClient(base_url=URL) as anonymous:
+            assert (await anonymous.get('/api/pages',headers={'X-PM-Workspace':accounts[0][0],'X-PM-Internal':'forged'})).status_code==401
+        for index,(client,user) in enumerate(results):
+            forged={'X-PM-Workspace':accounts[(index+1)%20][0],'X-PM-Internal':'forged','X-PM-Capability':'write'}
+            response=await client.get('/api/reels',params={'search':'Tenant isolation','user_id':accounts[(index+1)%20][0]},headers=forged)
+            assert response.status_code==200,response.text
+            jobs=response.json()['jobs']
+            assert len(jobs)==1 and jobs[0]['caption']==f'Tenant isolation {index}'
+            assert jobs[0]['request_id']==operation
+            library=await client.get('/api/reels/assets',params={'search':'tenant-isolation-upload'},headers=forged)
+            assert library.status_code==200 and library.json()['total']==1
+            foreign_asset=(await results[(index+1)%20][0].get('/api/reels/assets',params={'search':'tenant-isolation-upload'})).json()['assets'][0]
+            assert (await client.get(foreign_asset['preview_url'],headers=forged)).status_code==404
+            metrics=(await client.get('/api/analytics',params={'search':'Tenant metric'},headers=forged)).json()['items']
+            assert len(metrics)==1 and metrics[0]['views']==1000+index
+        # Admin and owner personal tokens both stay bound to their own business data.
+        for index in (0,1):
+            client=results[index][0]
+            token=(await client.post('/api/account/mcp-tokens',json={'label':'Tenant boundary QA','days':1})).json()
+            tokens.append((client,token['id']))
+            async with httpx.AsyncClient(base_url=URL,headers={'Authorization':'Bearer '+token['token'],'X-PM-Workspace':accounts[2][0],'X-PM-Internal':'forged'}) as mcp:
+                response=await mcp.post('/mcp',json={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'via_operation_status','arguments':{'operation_id':operation}}})
+                result=response.json()['result'];assert not result['isError']
+                job=json.loads(result['content'][0]['text'])['job']
+                assert job['caption']==f'Tenant isolation {index}'
+                rejected=await mcp.post('/mcp',json={'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'pages_connections','arguments':{'workspace':accounts[2][0]}}})
+                assert rejected.json()['error']['code']==-32602
+                assert (await mcp.get('/api/admin/users')).status_code==403
+    finally:
+        for client,token_id in tokens:await client.delete('/api/account/mcp-tokens/'+token_id)
+        await asyncio.gather(*(client.aclose() for client,_ in results))
+
+
+async def test_disabling_one_owner_revokes_only_their_sessions_and_tokens(accounts):
+    admin,_=await login('test_user00')
+    owner,_=await login('test_user19')
+    peer,_=await login('test_user18')
+    target=next(owner_id for owner_id,username in accounts if username=='test_user19')
+    try:
+        token=(await owner.post('/api/account/mcp-tokens',json={'label':'Revocation QA','days':1})).json()
+        async with httpx.AsyncClient(base_url=URL,headers={'Authorization':'Bearer '+token['token']}) as mcp:
+            assert (await mcp.post('/mcp',json={'jsonrpc':'2.0','id':1,'method':'ping'})).status_code==200
+            locked=await admin.patch('/api/admin/users/'+target,json={'active':False})
+            assert locked.status_code==200,locked.text
+            assert (await owner.get('/api/pages')).status_code==401
+            assert (await mcp.post('/mcp',json={'jsonrpc':'2.0','id':2,'method':'ping'})).status_code==401
+            assert (await peer.get('/api/pages')).status_code==200
+    finally:
+        assert (await admin.patch('/api/admin/users/'+target,json={'active':True})).status_code==200
+        await admin.aclose();await owner.aclose();await peer.aclose()

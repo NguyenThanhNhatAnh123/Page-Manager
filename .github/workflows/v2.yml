@@ -43,7 +43,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m pytest tests/test_worker.py -q
       - run: cargo build --locked --manifest-path gateway/Cargo.toml
-      - run: npm ci && npm run build
+      - run: npm ci && npm test && npm run build
         working-directory: v2/frontend
       - name: Verify Rust gateway and 20 simultaneous sessions
         run: |

@@ -45,6 +45,8 @@ import {
   post,
   upload,
   setCsrf,
+  notifySessionChange,
+  watchSessionChanges,
   number,
   date,
   size,
@@ -3156,6 +3158,7 @@ function App() {
     if (user?.id !== next.id) client.clear();
     setCsrf(next.csrf_token);
     setUser(next);
+    notifySessionChange();
   }
   useEffect(() => {
     const expire = () => {
@@ -3164,8 +3167,16 @@ function App() {
       setUser(null);
       setComposer(null);
     };
-    window.addEventListener("pm-session-expired", expire);
-    return () => window.removeEventListener("pm-session-expired", expire);
+    const expired = () => {
+      expire();
+      notifySessionChange();
+    };
+    const stop = watchSessionChanges(expire);
+    window.addEventListener("pm-session-expired", expired);
+    return () => {
+      stop();
+      window.removeEventListener("pm-session-expired", expired);
+    };
   }, [client]);
   useEffect(() => {
     api<{ user: User }>("/api/auth/me")
@@ -3210,6 +3221,7 @@ function App() {
       setCsrf("");
       setUser(null);
       setComposer(null);
+      notifySessionChange();
     } catch (e) {
       setLogoutError(e);
     }

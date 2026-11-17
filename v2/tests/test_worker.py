@@ -400,3 +400,92 @@ async def test_retention_keeps_last_successful_counts_even_after_read_failure(ru
     saved=workspace.analytics.list()['items'][0]
     assert (saved['views'],saved['comments'],saved['shares'])==(99,5,2)
     assert saved['views_observed_at']==stamp
+
+
+async def test_twenty_owners_isolate_uploads_schedules_replays_and_cancellation(runtime,monkeypatch):
+    from worker import app as module
+    registry,app,owners=runtime
+    monkeypatch.setattr(module,'registry',registry)
+    video=(24).to_bytes(4,'big')+b'ftypisom'+b'\0'*4+b'isommp42'+b'mdat'+b'tenant-isolation-test-video'
+    operation=str(uuid5(NAMESPACE_DNS,'tenant-isolation-shared-operation'))
+    headers=lambda owner:{'x-pm-internal':os.environ['PM_INTERNAL_KEY'],'x-pm-workspace':owner,'x-pm-capability':'write'}
+    for owner in owners:
+        workspace=registry.get(owner)
+        page=workspace.manager.pages(search='555')['items'][0]
+        workspace.manager.manage_page('555',page['management_revision'],information_status='updated')
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test',timeout=60) as client:
+        async def create(index,owner):
+            upload=await client.post('/api/reels/assets',headers=headers(owner)|{'content-type':'application/octet-stream','x-filename':'tenant-isolation-upload.mp4'},content=video)
+            assert upload.status_code==201,upload.text
+            asset=upload.json()['asset']
+            assert 'path' not in asset
+            body={'request_id':operation,'page_id':'555','connection_id':1,'asset_id':asset['id'],
+                  'caption':f'Tenant isolation {index}','scheduled_local':'2050-01-01T12:00','timezone':'UTC'}
+            created=await client.post('/api/reels',headers=headers(owner),json=body)
+            assert created.status_code==201,created.text
+            replay=await client.post('/api/reels',headers=headers(owner),json=body)
+            assert replay.status_code==201 and replay.json()['replayed']
+            assert replay.json()['job']['id']==created.json()['job']['id']
+            duplicate=await client.post('/api/reels/assets',headers=headers(owner)|{'content-type':'application/octet-stream','x-filename':'same-bytes.mp4'},content=video)
+            assert duplicate.status_code==201 and duplicate.json()['asset']['id']==asset['id']
+            return asset,created.json()['job']
+        results=await asyncio.gather(*(create(index,owner) for index,owner in enumerate(owners)))
+        assert len({asset['id'] for asset,_ in results})==20
+        assert len({registry.get(owner).root for owner in owners})==20
+        for index,(owner,(asset,job)) in enumerate(zip(owners,results)):
+            workspace=registry.get(owner)
+            recorded=workspace.assets.resolve(asset['id'])
+            assert Path(recorded['path']).parent==workspace.assets.files.root
+            assert recorded['sha256']==hashlib.sha256(video).hexdigest()
+            own=await client.get(asset['preview_url'],headers=headers(owner))
+            foreign=await client.get(results[(index+1)%20][0]['preview_url'],headers=headers(owner))
+            assert own.status_code==200 and own.content==video
+            assert foreign.status_code==404
+            saved=(await client.get(f"/api/reels/{job['id']}",headers=headers(owner))).json()['job']
+            assert saved['caption']==f'Tenant isolation {index}' and saved['request_id']==operation
+        cancelled=await client.post(f"/api/reels/{results[8][1]['id']}/cancel",headers=headers(owners[8]))
+        assert cancelled.status_code==200
+        for index,owner in enumerate(owners):
+            saved=registry.get(owner).manager.store.reel_job_by_request(operation)
+            assert saved['status']==('cancelled' if index==8 else 'scheduled')
+
+
+async def test_twenty_owners_isolate_same_video_metrics_history_events_and_mcp(runtime,monkeypatch):
+    from worker import app as module
+    registry,app,owners=runtime
+    monkeypatch.setattr(module,'registry',registry)
+    video='990077001'
+    for index,owner in enumerate(owners):
+        workspace=registry.get(owner)
+        workspace.analytics.register(video,'555',1,f'Tenant metric {index}')
+        with workspace.manager.store.connect() as db:
+            db.execute('''INSERT INTO reel_metric_snapshots(video_id,observed_at,views,comments,shares,view_metric,api_version,status)
+                VALUES(?,?,?,?,?,?,?,?)''',(video,datetime.now(timezone.utc).isoformat(),1000+index,index,2*index,'fb_reels_total_plays','v26.0','available'))
+        workspace.manager.store.event('tenant_isolation','ok',f'[tenant:{owner}]')
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test',timeout=60) as client:
+        for index,owner in enumerate(owners):
+            headers={'x-pm-internal':os.environ['PM_INTERNAL_KEY'],'x-pm-workspace':owner,'x-pm-capability':'read'}
+            metrics=(await client.get('/api/analytics?search=Tenant%20metric',headers=headers)).json()
+            assert len(metrics['items'])==1 and metrics['items'][0]['views']==1000+index
+            history=(await client.get(f'/api/analytics/{video}/history',headers=headers)).json()['items']
+            assert len(history)==1 and (history[0]['views'],history[0]['comments'],history[0]['shares'])==(1000+index,index,2*index)
+            events=(await client.get('/api/events?limit=100',headers=headers)).text
+            assert f'[tenant:{owner}]' in events
+            assert all(f'[tenant:{peer}]' not in events for peer in owners if peer!=owner)
+            response=await client.post('/mcp',headers=headers,json={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'pages_analytics','arguments':{'limit':100}}})
+            result=response.json()['result']
+            assert not result['isError']
+            item=next(row for row in json.loads(result['content'][0]['text'])['items'] if row['video_id']==video)
+            assert (item['views'],item['comments'],item['shares'])==(1000+index,index,2*index)
+            assert 'encrypted_token' not in response.text and 'FakeSystemUserToken' not in response.text
+
+
+async def test_worker_rejects_missing_forged_and_invalid_owner_authentication(runtime,monkeypatch):
+    from worker import app as module
+    registry,app,owners=runtime
+    monkeypatch.setattr(module,'registry',registry)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
+        assert (await client.get('/api/connections',headers={'x-pm-workspace':owners[0],'x-pm-internal':'forged'})).status_code==401
+        for owner in ('',str(uuid4()),'../../'+owners[0],owners[0].upper()):
+            response=await client.get('/api/connections',headers={'x-pm-workspace':owner,'x-pm-internal':os.environ['PM_INTERNAL_KEY']})
+            assert response.status_code==403

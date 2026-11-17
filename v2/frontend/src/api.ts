@@ -128,8 +128,29 @@ export type Overview = {
   sync: Sync;
 };
 let csrf = "";
+let sessionGeneration = 0;
+const sessionStorageKey = "pm-session-change";
 export function setCsrf(value: string) {
+  sessionGeneration++;
   csrf = value;
+}
+export function notifySessionChange() {
+  try {
+    window.localStorage.setItem(sessionStorageKey, crypto.randomUUID());
+  } catch {
+    // Storage may be unavailable; this tab must still finish its auth action.
+  }
+}
+export function watchSessionChanges(reset: () => void) {
+  const listener = (event: StorageEvent) => {
+    if (event.key === sessionStorageKey) reset();
+  };
+  window.addEventListener("storage", listener);
+  return () => window.removeEventListener("storage", listener);
+}
+function requireCurrentSession(generation: number) {
+  if (generation !== sessionGeneration)
+    throw new ApiError(409, "Phiên đăng nhập đã thay đổi. Thao tác cũ đã được bỏ qua.");
 }
 export class ApiError extends Error {
   constructor(
@@ -143,6 +164,7 @@ export async function api<T = any>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const generation = sessionGeneration;
   const response = await fetch(path, {
     ...options,
     credentials: "same-origin",
@@ -155,6 +177,7 @@ export async function api<T = any>(
   const value = await response
     .json()
     .catch(() => ({ detail: "Phản hồi máy chủ không hợp lệ." }));
+  requireCurrentSession(generation);
   if (response.status === 401 && path != "/api/auth/login")
     window.dispatchEvent(new Event("pm-session-expired"));
   if (!response.ok)
@@ -172,6 +195,7 @@ export function upload(
   file: File,
   onProgress: (progress: number) => void,
 ): Promise<{ asset: Asset }> {
+  const generation = sessionGeneration;
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", "/api/reels/assets");
@@ -189,6 +213,14 @@ export function upload(
         ),
       );
     request.onload = () => {
+      try {
+        requireCurrentSession(generation);
+      } catch (error) {
+        reject(error);
+        return;
+      }
+      if (request.status === 401)
+        window.dispatchEvent(new Event("pm-session-expired"));
       let value;
       try {
         value = JSON.parse(request.responseText);
