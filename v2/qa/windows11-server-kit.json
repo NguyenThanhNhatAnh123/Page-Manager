@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-17",
+  "timezone": "America/Los_Angeles",
+  "target": "Windows 11 x64 with Hyper-V, Ubuntu Server 24.04 LTS VM, Docker Engine",
+  "source_commit": "218437c6f618be9ae0e29afbecdaca08b8e2300b",
+  "ci": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44065363809",
+  "result": "success",
+  "checks": {
+    "server_helper_tests": 17,
+    "worker_and_server_tests_postgresql18": 46,
+    "gateway_tests": 6,
+    "frontend_session_tests": 6,
+    "rust_and_frontend_build": true,
+    "docker_server_health": true,
+    "systemd_unit_validation": true,
+    "shell_syntax": true,
+    "windows_powershell_syntax_only": true,
+    "caddy_configuration_validation": true,
+    "database_not_published": true,
+    "postgres_restart_policy_always": true,
+    "twenty_accounts_and_media_retained_after_app_restart": true,
+    "private_backup_checksums": true,
+    "backup_database_restored_into_fresh_ci_database": true
+  },
+  "unchanged": ["dev machine OS/security/features", "existing Codespace application/data", "real Meta content"],
+  "not_verified": ["actual server edition/hardware", "Windows/VM reboot and AC power recovery", "server DNS/NAT/TLS issuance", "real data migration and production workload"],
+  "deployment_state": "prepared and tested in disposable CI; not installed on the user's Windows server"
+}

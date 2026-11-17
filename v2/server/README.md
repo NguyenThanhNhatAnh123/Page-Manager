@@ -8,7 +8,7 @@ Phương án vận hành: **Windows 11 → Hyper-V → Ubuntu Server 24.04 LTS �
 
 | Vị trí | Thành phần | Mục đích |
 | --- | --- | --- |
-| Server vật lý | Windows 11 Pro/Enterprise/Education hỗ trợ Hyper-V | Hệ điều hành chủ; Windows Home cần nâng cấp edition hoặc chọn phương án khác trước |
+| Server vật lý | Windows 11 x64 Pro/Enterprise/Education hỗ trợ Hyper-V | Hệ điều hành chủ; Windows Home cần nâng cấp edition hoặc chọn phương án khác trước |
 | Windows | Hyper-V; bật ảo hóa CPU trong BIOS/UEFI | Chạy máy ảo Linux tự động cùng máy chủ |
 | Máy ảo | Ubuntu Server **24.04 LTS**, OpenSSH Server nếu cần quản trị từ máy dev | Môi trường chạy dịch vụ |
 | Ubuntu | Git, Python 3, CA certificates, curl | Lấy mã và chạy công cụ quản trị |
@@ -41,7 +41,7 @@ Không có tham số thì script **chỉ đọc** edition, RAM, CPU, ảo hóa v
 
 Các tham số có hỗ trợ `-WhatIf`. Không chạy các lệnh áp dụng cấu hình trên máy dev. Không thay Execution Policy hoặc tắt Smart App Control nếu chính sách của máy chặn script; xử lý theo chính sách quản trị máy.
 
-Trong Hyper-V Manager, tạo VM tên **PageManager-v2**, Generation 2, RAM 8 GB, 4 CPU và VHDX từ 200 GB. Dùng ISO Ubuntu Server 24.04 LTS tải từ [Ubuntu](https://ubuntu.com/download/server), kiểm tra checksum theo trang tải. Nếu bật Secure Boot, chọn template **Microsoft UEFI Certificate Authority** cho Ubuntu. Tạo External Virtual Switch trên đúng card LAN và gán cho VM; thao tác này có thể đổi kết nối mạng host nên thực hiện khi có quyền truy cập trực tiếp/dự phòng. Giữ IP VM qua DHCP reservation hoặc cấu hình tĩnh đúng mạng.
+Trong Hyper-V Manager, tạo VM tên **PageManager-v2**, Generation 2, RAM 8 GB, 4 CPU và VHDX từ 200 GB. Dùng ISO **24.04.x-live-server-amd64.iso** trong [kho tải Ubuntu 24.04 LTS](https://releases.ubuntu.com/24.04/), kiểm tra checksum theo trang tải. Nếu bật Secure Boot, chọn template **Microsoft UEFI Certificate Authority** cho Ubuntu. Tạo External Virtual Switch trên đúng card LAN và gán cho VM; thao tác này có thể đổi kết nối mạng host nên thực hiện khi có quyền truy cập trực tiếp/dự phòng. Giữ IP VM qua DHCP reservation hoặc cấu hình tĩnh đúng mạng.
 
 Cài Ubuntu; chọn OpenSSH Server nếu cần SSH. Sau khi VM đã tồn tại, cấu hình tự bật và tắt guest có trật tự:
 
