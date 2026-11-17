@@ -6,7 +6,7 @@ Claude CLI đề xuất runtime Linux thật trên Codespaces. GitHub CLI hiện
 
 ## Thành phần đã chuẩn bị
 
-- `.devcontainer/devcontainer.json`: Linux Python 3.12 với Docker-in-Docker; chỉ forward cổng 8020.
+- `.devcontainer/devcontainer.json`: Linux Python 3.12 với Docker-in-Docker và SSH; chỉ forward cổng 8020. Dockerfile nền bỏ kho Yarn không dùng để tránh lỗi khóa ký cũ, vẫn giữ xác minh chữ ký APT. CI build cả feature image.
 - `scripts/codespaces_start.py`: tạo khóa/mật khẩu mới một lần, chạy Docker Compose hiện có để build Rust gateway, FE, Python worker và PostgreSQL 18 thật. Chỉ cho phép chạy trong Linux Codespace.
 - Container tạo 20 tài khoản riêng bằng provisioning hiện có. Mật khẩu ban đầu ở volume dữ liệu riêng; phải đổi trước khi cấp MCP token. Không tự gán token Meta đã thử cho bất kỳ người dùng nào.
 - Vẫn dùng `http://127.0.0.1:8020` trên Windows, qua port forwarding có xác thực GitHub; giữ port ở chế độ private.

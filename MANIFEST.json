@@ -5,8 +5,13 @@
   "files": [
     {
       "path": ".devcontainer/devcontainer.json",
-      "bytes": 635,
-      "sha256": "1d4d2a04a210a053106c582872681016f888f07a7f2943b1143c2aebe612bcdf"
+      "bytes": 658,
+      "sha256": "8e44f75f864236b03248b9bffae2e570c22f93f258127dbd38ccee58207b3824"
+    },
+    {
+      "path": ".devcontainer/Dockerfile",
+      "bytes": 376,
+      "sha256": "3bc3502bdfa5fde45fdb73b82f6a8868b8b01d65eedd7fa6ce2847c098cd4287"
     },
     {
       "path": ".dockerignore",
@@ -15,8 +20,8 @@
     },
     {
       "path": ".github/workflows/v2.yml",
-      "bytes": 2717,
-      "sha256": "a1a5a04fc79811652f6fbca1741712c5311962dfb637e6202dcebf9037dcb8ea"
+      "bytes": 3024,
+      "sha256": "cd56658fd9a58964773c3f3ab11e5aca7492e4e6ea2ee686a55249b66a7baa57"
     },
     {
       "path": ".gitignore",
@@ -1120,8 +1125,8 @@
     },
     {
       "path": "v2/examples/codespaces-plan.md",
-      "bytes": 3265,
-      "sha256": "bb4e0718cd09687673f8de14f71ec6d1133fe55e12820483660543c114f731d9"
+      "bytes": 3417,
+      "sha256": "1138d641ed8c8147fb940f5146affd725010648ae6c3f864de6cb93c8ba78251"
     },
     {
       "path": "v2/examples/codex-mcp.toml",

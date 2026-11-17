@@ -1,6 +1,15 @@
 name: PageManager v2
 on: [push, pull_request]
 jobs:
+  codespaces:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Build Codespaces image and features
+        run: npx --yes @devcontainers/cli@0.83.3 build --workspace-folder .
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
