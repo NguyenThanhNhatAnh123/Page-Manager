@@ -136,11 +136,12 @@ async fn account(State(app):State<App>,req:Request)->Result<Response,Failure> {
  }
  if method==Method::PATCH {
   let id=path.rsplit('/').next().unwrap_or("").to_owned();let value=body_json(req).await?;
-  let can_write=value["can_write"].as_bool().ok_or_else(||fail(StatusCode::UNPROCESSABLE_ENTITY,"Chọn quyền kết nối MCP."))?;
-  let changed=sqlx::query("UPDATE pm_mcp_tokens SET can_write=$1 WHERE id=$2 AND user_id=$3 AND revoked_at IS NULL AND expires_at>now()")
-   .bind(can_write).bind(&id).bind(&a.id).execute(&app.db).await.map_err(db_error)?;
-  if changed.rows_affected()==0 {return Err(fail(StatusCode::NOT_FOUND,"Không có MCP token còn hiệu lực trong kho này."))}
-  return Ok(axum::Json(json!({"ok":true,"can_write":can_write})).into_response())
+  let can_write=match value.get("can_write"){None=>None,Some(v)=>Some(v.as_bool().ok_or_else(||fail(StatusCode::UNPROCESSABLE_ENTITY,"Quyền MCP không hợp lệ."))?)};
+  let label=match value.get("label"){None=>None,Some(v)=>{let name=v.as_str().unwrap_or("").trim();if name.is_empty()||name.len()>100{return Err(fail(StatusCode::UNPROCESSABLE_ENTITY,"Nhập tên token từ 1 đến 100 ký tự."))}Some(name.to_owned())}};
+  if can_write.is_none()&&label.is_none(){return Err(fail(StatusCode::UNPROCESSABLE_ENTITY,"Chọn thông tin token cần cập nhật."))}
+  let changed=sqlx::query("UPDATE pm_mcp_tokens SET can_write=COALESCE($1,can_write),label=COALESCE($2,label) WHERE id=$3 AND user_id=$4 AND revoked_at IS NULL AND expires_at>now() RETURNING can_write,label")
+   .bind(can_write).bind(label).bind(&id).bind(&a.id).fetch_optional(&app.db).await.map_err(db_error)?.ok_or_else(||fail(StatusCode::NOT_FOUND,"Không có MCP token còn hiệu lực trong kho này."))?;
+  return Ok(axum::Json(json!({"ok":true,"can_write":changed.get::<bool,_>("can_write"),"label":changed.get::<String,_>("label")})).into_response())
  }
  if method!=Method::POST {return Err(fail(StatusCode::METHOD_NOT_ALLOWED,"Thao tác không được hỗ trợ."))}
  let value=body_json(req).await?;let label=value["label"].as_str().unwrap_or("").trim();
@@ -151,28 +152,78 @@ async fn account(State(app):State<App>,req:Request)->Result<Response,Failure> {
  Ok(axum::Json(json!({"id":id,"token":raw,"can_write":can_write,"mcp_url":format!("{}/mcp",app.origin)})).into_response())
 }
 
+fn valid_username(value:&str)->bool {
+ value.len()>=3&&value.len()<=32&&value.bytes().all(|b|b.is_ascii_lowercase()||b.is_ascii_digit()||b==b'_'||b==b'-')
+}
+fn account_db_error(error:sqlx::Error)->Failure {
+ if error.as_database_error().and_then(|e|e.code()).as_deref()==Some("23505") {fail(StatusCode::CONFLICT,"Tên tài khoản đã tồn tại.")}else{db_error(error)}
+}
 async fn admin(State(app):State<App>,req:Request)->Result<Response,Failure> {
  let a=actor(&app,req.headers(),req.method()).await?;
  if a.mcp||a.must_change||a.role!="admin" {return Err(fail(StatusCode::FORBIDDEN,"Chỉ quản trị viên được quản lý tài khoản."))}
- if req.method()==Method::GET {
-  let rows=sqlx::query("SELECT id,username,role,active,must_change,timezone FROM pm_users ORDER BY username").fetch_all(&app.db).await.map_err(db_error)?;
-  return Ok(axum::Json(json!({"items":rows.iter().map(|r|json!({"id":r.get::<String,_>("id"),"username":r.get::<String,_>("username"),"role":r.get::<String,_>("role"),"active":r.get::<bool,_>("active"),"must_change":r.get::<bool,_>("must_change"),"timezone":r.get::<String,_>("timezone")})).collect::<Vec<_>>(),"max_users":20})).into_response())
+ let method=req.method().clone();let path=req.uri().path().to_owned();
+ if method==Method::GET {
+  let rows=sqlx::query("SELECT id,username,display_name,role,active,must_change,timezone FROM pm_users ORDER BY username").fetch_all(&app.db).await.map_err(db_error)?;
+  return Ok(axum::Json(json!({"items":rows.iter().map(|r|json!({"id":r.get::<String,_>("id"),"username":r.get::<String,_>("username"),"display_name":r.get::<String,_>("display_name"),"role":r.get::<String,_>("role"),"active":r.get::<bool,_>("active"),"must_change":r.get::<bool,_>("must_change"),"timezone":r.get::<String,_>("timezone")})).collect::<Vec<_>>(),"max_users":20})).into_response())
  }
- if req.method()!=Method::PATCH {return Err(fail(StatusCode::METHOD_NOT_ALLOWED,"Thao tác không được hỗ trợ."))}
- let target=req.uri().path().rsplit('/').next().unwrap_or("").to_owned();let value=body_json(req).await?;
- let password=if value["reset_password"]==true {if a.id==target{return Err(fail(StatusCode::CONFLICT,"Dùng chức năng đổi mật khẩu cá nhân."))}Some(secret())}else{None};
- let hash=if let Some(p)=password.clone(){Some(tokio::task::spawn_blocking(move||Argon2::default().hash_password(p.as_bytes(),&SaltString::generate(&mut OsRng)).unwrap().to_string()).await.map_err(|_|fail(StatusCode::INTERNAL_SERVER_ERROR,"Chưa tạo được mật khẩu."))?)}else{None};
+ if method==Method::POST && path=="/api/admin/users" {
+  let value=body_json(req).await?;let username=value["username"].as_str().unwrap_or("").trim().to_owned();
+  let display=value["display_name"].as_str().unwrap_or("").trim().to_owned();let role=value["role"].as_str().unwrap_or("owner").to_owned();
+  if !valid_username(&username)||!["admin","owner"].contains(&role.as_str())||display.chars().count()>100 {return Err(fail(StatusCode::UNPROCESSABLE_ENTITY,"Tên đăng nhập, tên hiển thị hoặc quyền không hợp lệ."))}
+  let supplied=value["password"].as_str().filter(|s|!s.is_empty()).map(str::to_owned);
+  if supplied.as_ref().is_some_and(|p|!(12..=1024).contains(&p.len())) {return Err(fail(StatusCode::UNPROCESSABLE_ENTITY,"Mật khẩu cần từ 12 ký tự."))}
+  let password=supplied.clone().unwrap_or_else(secret);let temporary=if supplied.is_none(){Some(password.clone())}else{None};
+  let permit=tokio::time::timeout(PASSWORD_QUEUE_WAIT,app.passwords.clone().acquire_owned()).await.map_err(|_|fail(StatusCode::TOO_MANY_REQUESTS,"Máy chủ đang bận. Thử lại sau."))?.map_err(|_|fail(StatusCode::SERVICE_UNAVAILABLE,"Máy chủ đang dừng."))?;
+  let hash=tokio::task::spawn_blocking(move||{let _permit=permit;Argon2::default().hash_password(password.as_bytes(),&SaltString::generate(&mut OsRng)).map(|h|h.to_string())}).await.map_err(|_|fail(StatusCode::INTERNAL_SERVER_ERROR,"Chưa tạo được mật khẩu."))?.map_err(|_|fail(StatusCode::INTERNAL_SERVER_ERROR,"Chưa tạo được mật khẩu."))?;
+  let mut tx=app.db.begin().await.map_err(db_error)?;sqlx::query("SELECT pg_advisory_xact_lock(80202020)").execute(&mut *tx).await.map_err(db_error)?;
+  let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM pm_users").fetch_one(&mut *tx).await.map_err(db_error)?;
+  if count>=20 {return Err(fail(StatusCode::CONFLICT,"Đã đủ 20 tài khoản. Xóa tài khoản mẫu không dùng trước khi thêm."))}
+  let id=Uuid::new_v4().to_string();
+  sqlx::query("INSERT INTO pm_users(id,username,display_name,password_hash,role,must_change) VALUES($1,$2,$3,$4,$5,TRUE)").bind(&id).bind(username).bind(display).bind(hash).bind(role).execute(&mut *tx).await.map_err(account_db_error)?;
+  tx.commit().await.map_err(db_error)?;return Ok((StatusCode::CREATED,axum::Json(json!({"ok":true,"id":id,"temporary_password":temporary}))).into_response())
+ }
+ let target=path.rsplit('/').next().unwrap_or("").to_owned();
+ if Uuid::parse_str(&target).is_err() {return Err(fail(StatusCode::NOT_FOUND,"Không có tài khoản này."))}
+ if method==Method::DELETE {
+  if target==a.id {return Err(fail(StatusCode::CONFLICT,"Không thể xóa tài khoản đang đăng nhập."))}
+  let mut tx=app.db.begin().await.map_err(db_error)?;sqlx::query("SELECT pg_advisory_xact_lock(80208020)").execute(&mut *tx).await.map_err(db_error)?;
+  let row=sqlx::query("SELECT id,username,display_name,role,active,created_at FROM pm_users WHERE id=$1 FOR UPDATE").bind(&target).fetch_optional(&mut *tx).await.map_err(db_error)?.ok_or_else(||fail(StatusCode::NOT_FOUND,"Không có tài khoản này."))?;
+  let other_admins:i64=sqlx::query_scalar("SELECT COUNT(*) FROM pm_users WHERE role='admin' AND active AND id<>$1").bind(&target).fetch_one(&mut *tx).await.map_err(db_error)?;
+  if row.get::<String,_>("role")=="admin"&&row.get::<bool,_>("active")&&other_admins==0 {return Err(fail(StatusCode::CONFLICT,"Cần giữ ít nhất một quản trị viên hoạt động."))}
+  let namespace=format!("w_{}",Uuid::parse_str(&target).unwrap().simple());
+  let table_exists:bool=sqlx::query_scalar("SELECT to_regclass($1) IS NOT NULL").bind(format!("{}.reel_jobs",namespace)).fetch_one(&mut *tx).await.map_err(db_error)?;
+  if table_exists {
+   let pending:bool=sqlx::query_scalar(&format!("SELECT EXISTS(SELECT 1 FROM \"{namespace}\".reel_jobs WHERE status NOT IN ('completed','cancelled'))")).fetch_one(&mut *tx).await.map_err(db_error)?;
+   if pending {return Err(fail(StatusCode::CONFLICT,"Tài khoản còn lịch chưa kết thúc. Hủy hoặc xử lý các lịch đó trước khi xóa."))}
+  }
+  sqlx::query("INSERT INTO pm_user_archives(id,username,display_name,role,created_at) SELECT id,username,display_name,role,created_at FROM pm_users WHERE id=$1").bind(&target).execute(&mut *tx).await.map_err(db_error)?;
+  sqlx::query("UPDATE pm_audit SET user_id=NULL WHERE user_id=$1").bind(&target).execute(&mut *tx).await.map_err(db_error)?;
+  sqlx::query("DELETE FROM pm_users WHERE id=$1").bind(&target).execute(&mut *tx).await.map_err(db_error)?;
+  tx.commit().await.map_err(db_error)?;return Ok(axum::Json(json!({"ok":true,"archived":true})).into_response())
+ }
+ if method!=Method::PATCH {return Err(fail(StatusCode::METHOD_NOT_ALLOWED,"Thao tác không được hỗ trợ."))}
+ let value=body_json(req).await?;
+ let supplied=value["password"].as_str().filter(|p|!p.is_empty()).map(str::to_owned);
+ if supplied.as_ref().is_some_and(|p|!(12..=1024).contains(&p.len())) {return Err(fail(StatusCode::UNPROCESSABLE_ENTITY,"Mật khẩu cần từ 12 ký tự."))}
+ let password=if supplied.is_some()||value["reset_password"]==true {if a.id==target{return Err(fail(StatusCode::CONFLICT,"Dùng chức năng đổi mật khẩu cá nhân."))}Some(supplied.clone().unwrap_or_else(secret))}else{None};
+ let hash=if let Some(p)=password.clone(){
+  let permit=tokio::time::timeout(PASSWORD_QUEUE_WAIT,app.passwords.clone().acquire_owned()).await.map_err(|_|fail(StatusCode::TOO_MANY_REQUESTS,"Máy chủ đang bận."))?.map_err(|_|fail(StatusCode::SERVICE_UNAVAILABLE,"Máy chủ đang dừng."))?;
+  Some(tokio::task::spawn_blocking(move||{let _permit=permit;Argon2::default().hash_password(p.as_bytes(),&SaltString::generate(&mut OsRng)).map(|h|h.to_string())}).await.map_err(|_|fail(StatusCode::INTERNAL_SERVER_ERROR,"Chưa tạo được mật khẩu."))?.map_err(|_|fail(StatusCode::INTERNAL_SERVER_ERROR,"Chưa tạo được mật khẩu."))?)
+ }else{None};
  let mut tx=app.db.begin().await.map_err(db_error)?;sqlx::query("SELECT pg_advisory_xact_lock(80208020)").execute(&mut *tx).await.map_err(db_error)?;
- let row=sqlx::query("SELECT username,role,active FROM pm_users WHERE id=$1 FOR UPDATE").bind(&target).fetch_optional(&mut *tx).await.map_err(db_error)?.ok_or_else(||fail(StatusCode::NOT_FOUND,"Không có tài khoản này."))?;
+ let row=sqlx::query("SELECT username,display_name,role,active FROM pm_users WHERE id=$1 FOR UPDATE").bind(&target).fetch_optional(&mut *tx).await.map_err(db_error)?.ok_or_else(||fail(StatusCode::NOT_FOUND,"Không có tài khoản này."))?;
  let role=value["role"].as_str().unwrap_or(row.get("role"));let active=value["active"].as_bool().unwrap_or(row.get("active"));let username=value["username"].as_str().unwrap_or(row.get("username"));
- if !["admin","owner"].contains(&role)||username.len()<3||username.len()>32||!username.bytes().all(|b|b.is_ascii_lowercase()||b.is_ascii_digit()||b==b'_'||b==b'-') {return Err(fail(StatusCode::UNPROCESSABLE_ENTITY,"Tên tài khoản hoặc quyền không hợp lệ."))}
+ let display=value["display_name"].as_str().unwrap_or(row.get("display_name")).trim();
+ if !["admin","owner"].contains(&role)||!valid_username(username)||display.chars().count()>100 {return Err(fail(StatusCode::UNPROCESSABLE_ENTITY,"Tên tài khoản hoặc quyền không hợp lệ."))}
  let admins:i64=sqlx::query_scalar("SELECT COUNT(*) FROM pm_users WHERE role='admin' AND active AND id<>$1").bind(&target).fetch_one(&mut *tx).await.map_err(db_error)?;
  if row.get::<String,_>("role")=="admin"&&(!active||role!="admin")&&admins==0 {return Err(fail(StatusCode::CONFLICT,"Cần giữ ít nhất một quản trị viên hoạt động."))}
- sqlx::query("UPDATE pm_users SET username=$1,role=$2,active=$3,password_hash=COALESCE($4,password_hash),must_change=CASE WHEN $4 IS NULL THEN must_change ELSE TRUE END WHERE id=$5").bind(username).bind(role).bind(active).bind(hash).bind(&target).execute(&mut *tx).await.map_err(db_error)?;
- sqlx::query("DELETE FROM pm_sessions WHERE user_id=$1").bind(&target).execute(&mut *tx).await.map_err(db_error)?;
- sqlx::query("UPDATE pm_mcp_tokens SET revoked_at=now() WHERE user_id=$1").bind(&target).execute(&mut *tx).await.map_err(db_error)?;
+ sqlx::query("UPDATE pm_users SET username=$1,display_name=$2,role=$3,active=$4,password_hash=COALESCE($5,password_hash),must_change=CASE WHEN $5 IS NULL THEN must_change ELSE TRUE END WHERE id=$6").bind(username).bind(display).bind(role).bind(active).bind(hash).bind(&target).execute(&mut *tx).await.map_err(account_db_error)?;
+ if password.is_some()||role!=row.get::<String,_>("role")||active!=row.get::<bool,_>("active") {
+  sqlx::query("DELETE FROM pm_sessions WHERE user_id=$1").bind(&target).execute(&mut *tx).await.map_err(db_error)?;
+  sqlx::query("UPDATE pm_mcp_tokens SET revoked_at=now() WHERE user_id=$1").bind(&target).execute(&mut *tx).await.map_err(db_error)?;
+ }
  tx.commit().await.map_err(db_error)?;
- Ok(axum::Json(json!({"ok":true,"temporary_password":password})).into_response())
+ Ok(axum::Json(json!({"ok":true,"temporary_password":if supplied.is_some(){None}else{password}})).into_response())
 }
 
 async fn proxy(State(app):State<App>,req:Request)->Result<Response,Failure> {
@@ -187,7 +238,7 @@ async fn proxy(State(app):State<App>,req:Request)->Result<Response,Failure> {
   let allowed=(req.method()==Method::POST && ["/api/reels","/api/reels/now","/api/analytics/sync"].contains(&path.as_str()))
    || (req.method()==Method::POST && ["/api/connections","/api/reels/assets"].contains(&path.as_str()))
    || (parts.first()==Some(&"api") && parts.get(1)==Some(&"connections") && reel_id &&
-      ((parts.len()==3 && req.method()==Method::PUT) || (parts.len()==4 && req.method()==Method::POST && ["check","sync","disconnect"].contains(&parts[3]))))
+      ((parts.len()==3 && [Method::PUT,Method::DELETE].contains(req.method())) || (parts.len()==4 && req.method()==Method::POST && ["check","sync","disconnect"].contains(&parts[3]))))
    || (parts.first()==Some(&"api") && parts.get(1)==Some(&"pages") && page_id &&
       ((parts.len()==3 && req.method()==Method::PATCH) || (parts.len()==4 && req.method()==Method::POST && ["refresh","edit-options","edit"].contains(&parts[3]))))
    || (parts.first()==Some(&"api") && parts.get(1)==Some(&"reels") && reel_id &&

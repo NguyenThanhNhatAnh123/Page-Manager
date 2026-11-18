@@ -6,6 +6,15 @@ export type User = {
   must_change: boolean;
   csrf_token: string;
 };
+export type AdminUser = {
+  id: string;
+  username: string;
+  display_name: string;
+  role: "admin" | "owner";
+  active: boolean;
+  must_change: boolean;
+  timezone: string;
+};
 export type Connection = {
   id: number;
   label: string;

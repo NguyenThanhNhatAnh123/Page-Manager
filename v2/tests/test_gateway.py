@@ -173,3 +173,59 @@ async def test_disabling_one_owner_revokes_only_their_sessions_and_tokens(accoun
     finally:
         assert (await admin.patch('/api/admin/users/'+target,json={'active':True})).status_code==200
         await admin.aclose();await owner.aclose();await peer.aclose()
+
+
+async def test_account_crud_archives_workspaces_and_mcp_token_labels_are_owner_scoped(accounts):
+    from psycopg.rows import dict_row
+    from psycopg import sql
+    admin,admin_user=await login('test_user00');victim,victim_user=await login('test_user19')
+    target=victim_user['id'];namespace='w_'+target.replace('-','')
+    dsn=os.environ['PM_TEST_DATABASE_URL']
+    with psycopg.connect(dsn,row_factory=dict_row,prepare_threshold=None) as db:
+        original=dict(db.execute('SELECT * FROM public.pm_users WHERE id=%s',(target,)).fetchone())
+        assert original['username']=='test_user19'
+        statuses=db.execute(sql.SQL('SELECT id,status FROM {}.reel_jobs').format(sql.Identifier(namespace))).fetchall()
+    temp_id=None;removed=False
+    try:
+        assert (await victim.post('/api/admin/users',json={'username':'test_user_crud_temp','password':PASSWORD})).status_code==403
+        assert (await admin.post('/api/admin/users',json={'username':'test_user_crud_temp','password':PASSWORD})).status_code==409
+        assert (await admin.delete('/api/admin/users/'+admin_user['id'])).status_code==409
+        personal=(await victim.post('/api/account/mcp-tokens',json={'label':'CRUD old label','days':1})).json()
+        renamed=await victim.patch('/api/account/mcp-tokens/'+personal['id'],json={'label':'CRUD updated label'})
+        assert renamed.status_code==200 and renamed.json()['label']=='CRUD updated label'
+        assert (await admin.patch('/api/account/mcp-tokens/'+personal['id'],json={'label':'Foreign label'})).status_code==404
+        if any(row['status'] not in ('completed','cancelled') for row in statuses):
+            assert (await admin.delete('/api/admin/users/'+target)).status_code==409
+        with psycopg.connect(dsn,prepare_threshold=None) as db:
+            db.execute(sql.SQL("UPDATE {}.reel_jobs SET status='cancelled' WHERE status NOT IN ('completed','cancelled')").format(sql.Identifier(namespace)))
+        deleted=await admin.delete('/api/admin/users/'+target)
+        assert deleted.status_code==200 and deleted.json()['archived'] is True
+        removed=True
+        assert (await victim.get('/api/auth/me')).status_code==401
+        async with httpx.AsyncClient(base_url=URL,timeout=30,trust_env=False,headers={'Authorization':'Bearer '+personal['token']}) as mcp:
+            assert (await mcp.post('/mcp',json={'jsonrpc':'2.0','id':1,'method':'ping'})).status_code==401
+        with psycopg.connect(dsn,prepare_threshold=None) as db:
+            assert db.execute('SELECT 1 FROM pm_user_archives WHERE id=%s',(target,)).fetchone()
+            assert db.execute('SELECT to_regclass(%s)',(namespace+'.pages',)).fetchone()[0]
+        created=await admin.post('/api/admin/users',json={'username':'test_user_crud_temp','display_name':'CRUD thành viên','password':PASSWORD,'role':'owner'})
+        assert created.status_code==201,created.text
+        temp_id=created.json()['id']
+        edited=await admin.patch('/api/admin/users/'+temp_id,json={'username':'test_user_crud_renamed','display_name':'Tên đã sửa'})
+        assert edited.status_code==200
+        listed=(await admin.get('/api/admin/users')).json()['items']
+        assert next(row for row in listed if row['id']==temp_id)['display_name']=='Tên đã sửa'
+        client,user=await login('test_user_crud_renamed')
+        try:assert user['must_change'] is True
+        finally:await client.aclose()
+        assert (await admin.delete('/api/admin/users/'+temp_id)).status_code==200
+        temp_id=None
+    finally:
+        if temp_id:await admin.delete('/api/admin/users/'+temp_id)
+        if removed:
+            with psycopg.connect(dsn,prepare_threshold=None) as db:
+                columns=list(original)
+                db.execute(sql.SQL('INSERT INTO public.pm_users ({}) VALUES ({})').format(sql.SQL(',').join(map(sql.Identifier,columns)),sql.SQL(',').join(sql.Placeholder() for _ in columns)),list(original.values()))
+                db.execute('DELETE FROM public.pm_user_archives WHERE id=%s',(target,))
+                for row in statuses:
+                    db.execute(sql.SQL('UPDATE {}.reel_jobs SET status=%s WHERE id=%s').format(sql.Identifier(namespace)),(row['status'],row['id']))
+        await admin.aclose();await victim.aclose()

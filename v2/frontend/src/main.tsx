@@ -39,6 +39,9 @@ import {
   MessageCircle,
   Share2,
   MoreHorizontal,
+  Trash2,
+  Pencil,
+  UserPlus,
 } from "lucide-react";
 import {
   api,
@@ -52,6 +55,7 @@ import {
   size,
   ApiError,
   type User,
+  type AdminUser,
   type Connection,
   type Page,
   type Asset,
@@ -78,7 +82,7 @@ const titles: Record<string, [string, string]> = {
   calendar: ["Lịch đăng", "Lịch đăng"],
   library: ["Thư viện", "Thư viện video"],
   analytics: ["Thống kê", "Hiệu quả nội dung"],
-  connections: ["Kết nối", "Kết nối System User"],
+  connections: ["Kết nối", "System User / Token"],
   settings: ["Cài đặt", "Tài khoản & MCP"],
   users: ["Người dùng", "Người dùng"],
 };
@@ -1003,6 +1007,7 @@ function Connections({ user }: { user: User }) {
     [editing, setEditing] = useState<Connection | null | undefined>(),
     [actions, setActions] = useState<Connection>(),
     [confirm, setConfirm] = useState<Connection>(),
+    [removing, setRemoving] = useState<Connection>(),
     [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false);
   const query = useData<{ items: Connection[]; total: number }>(
@@ -1010,13 +1015,19 @@ function Connections({ user }: { user: User }) {
     `/api/connections?limit=25&offset=${offset}&search=${encodeURIComponent(search)}`,
   );
   const client = useQueryClient();
-  async function action(path: string, value: unknown = {}) {
+  async function action(
+    path: string,
+    value: unknown = {},
+    method: "POST" | "DELETE" = "POST",
+  ) {
+    if (busy) return;
     setBusy(true);
     setError(undefined);
     try {
-      await post(path, value);
+      await api(path, { method, body: JSON.stringify(value) });
       await client.invalidateQueries({ queryKey: [user.id] });
       setConfirm(undefined);
+      setRemoving(undefined);
       setActions(undefined);
     } catch (e) {
       setError(e);
@@ -1033,17 +1044,17 @@ function Connections({ user }: { user: User }) {
             setSearch(v);
             setOffset(0);
           }}
-          placeholder="Tìm kết nối…"
+          placeholder="Tìm System User / Token…"
         />
         <button className="primary" onClick={() => setEditing(null)}>
           <Plus size={16} />
-          Thêm System User
+          Thêm System User / Token
         </button>
       </div>
       <div className="hint">
         <LockKeyhole size={15} />
-        Token được mã hóa và chỉ sử dụng phía máy chủ. Mỗi kết nối thuộc kho của
-        bạn.
+        Token được mã hóa, chỉ sử dụng phía máy chủ và không bao giờ hiển thị
+        lại. Mỗi System User / Token thuộc kho của bạn.
       </div>
       {error != null && <ErrorBox error={error} />}{" "}
       {query.isPending ? (
@@ -1056,7 +1067,7 @@ function Connections({ user }: { user: User }) {
             <table>
               <thead>
                 <tr>
-                  <th>Kết nối</th>
+                  <th>System User / Token</th>
                   <th>Business ID</th>
                   <th>Pages</th>
                   <th>Tình trạng</th>
@@ -1076,6 +1087,7 @@ function Connections({ user }: { user: User }) {
                           {c.label}
                           <small>
                             System User · {c.identity_name || "Chưa xác nhận"}
+                            {c.has_token ? " · Đã lưu token" : " · Chưa có token"}
                           </small>
                         </div>
                       </div>
@@ -1093,7 +1105,7 @@ function Connections({ user }: { user: User }) {
                       <button
                         className="icon-button connection-menu"
                         aria-label={`Thao tác với ${c.label}`}
-                        title="Thao tác kết nối"
+                        title="Thao tác System User / Token"
                         onClick={() => {
                           setError(undefined);
                           setActions(c);
@@ -1117,13 +1129,15 @@ function Connections({ user }: { user: User }) {
         <Empty
           icon={KeyRound}
           title={
-            search ? "Không tìm thấy kết nối" : "Kết nối System User đầu tiên"
+            search
+              ? "Không tìm thấy System User / Token"
+              : "Thêm System User / Token đầu tiên"
           }
           description="Nhập token của System User đã được gán quyền trên Page và ứng dụng Meta."
           action={
             <button onClick={() => setEditing(null)}>
               <Plus size={15} />
-              Thêm kết nối
+              Thêm System User / Token
             </button>
           }
         />
@@ -1164,7 +1178,10 @@ function Connections({ user }: { user: User }) {
               }}
             >
               <Settings2 size={18} />
-              <span>Chỉnh sửa kết nối</span>
+              <span>
+                Chỉnh sửa / thay token
+                <small>Đổi tên, Business ID, App ID hoặc dán token mới</small>
+              </span>
               <ChevronRight size={15} />
             </button>
             {actions.connected && (
@@ -1181,6 +1198,24 @@ function Connections({ user }: { user: User }) {
                 <ChevronRight size={15} />
               </button>
             )}
+            {(actions.has_token || actions.connected) && (
+              <button
+                disabled={busy}
+                className="warning-text"
+                onClick={() => {
+                  setError(undefined);
+                  setRemoving(actions);
+                  setActions(undefined);
+                }}
+              >
+                <Trash2 size={18} />
+                <span>
+                  Xóa token
+                  <small>Xóa token đã lưu, giữ lịch sử Page và Reel</small>
+                </span>
+                <ChevronRight size={15} />
+              </button>
+            )}
           </div>
           {error != null && <ErrorBox error={error} />}
         </Modal>
@@ -1193,13 +1228,19 @@ function Connections({ user }: { user: User }) {
         />
       )}{" "}
       {confirm && (
-        <Modal title="Ngắt kết nối?" onClose={() => setConfirm(undefined)}>
+        <Modal
+          title="Ngắt kết nối?"
+          onClose={() => !busy && setConfirm(undefined)}
+        >
           <p>
             Ngắt <strong>{confirm.label}</strong> sẽ xóa token đã lưu của kết
             nối này. Lịch chưa chạy dùng nguồn này sẽ cần xử lý lại.
           </p>
+          {error != null && <ErrorBox error={error} />}
           <div className="modal-footer">
-            <button onClick={() => setConfirm(undefined)}>Quay lại</button>
+            <button disabled={busy} onClick={() => setConfirm(undefined)}>
+              Quay lại
+            </button>
             <button
               className="danger"
               disabled={busy}
@@ -1210,6 +1251,48 @@ function Connections({ user }: { user: User }) {
               }
             >
               Ngắt kết nối
+            </button>
+          </div>
+        </Modal>
+      )}
+      {removing && (
+        <Modal
+          title={`Xóa token của ${removing.label}?`}
+          onClose={() => !busy && setRemoving(undefined)}
+        >
+          <p>
+            Token đã lưu của <strong>{removing.label}</strong> sẽ bị xóa và
+            nguồn này chuyển sang trạng thái đã ngắt. Lịch chưa chạy dùng nguồn
+            này sẽ cần chọn nguồn khác.
+          </p>
+          <p className="hint">
+            Page, Reel đã đăng và lịch sử thống kê vẫn được giữ nguyên. Nguồn đã
+            ngắt có thể còn hiển thị trong danh sách để tra cứu lịch sử; bạn có
+            thể dán token mới qua Chỉnh sửa bất kỳ lúc nào.
+          </p>
+          {error != null && <ErrorBox error={error} />}
+          <div className="modal-footer">
+            <button disabled={busy} onClick={() => setRemoving(undefined)}>
+              Quay lại
+            </button>
+            <button
+              className="danger"
+              disabled={busy}
+              aria-busy={busy}
+              onClick={() =>
+                action(
+                  `/api/connections/${removing.id}`,
+                  { revision: removing.revision },
+                  "DELETE",
+                )
+              }
+            >
+              {busy ? (
+                <LoaderCircle size={16} className="spin" />
+              ) : (
+                <Trash2 size={16} />
+              )}
+              Xóa token {removing.label}
             </button>
           </div>
         </Modal>
@@ -1233,14 +1316,16 @@ function ConnectionForm({
   return (
     <Modal
       title={
-        connection ? "Sửa kết nối System User" : "Thêm kết nối System User"
+        connection ? "Sửa System User / Token" : "Thêm System User / Token"
       }
-      onClose={onClose}
+      onClose={() => !busy && onClose()}
     >
       <form
         onSubmit={async (e) => {
           e.preventDefault();
+          if (busy) return;
           setBusy(true);
+          setError(undefined);
           const fields = Object.fromEntries(new FormData(e.currentTarget));
           const value = {
             ...fields,
@@ -1299,10 +1384,18 @@ function ConnectionForm({
         </div>
         <label>
           {connection
-            ? "Token mới · để trống để giữ token hiện tại"
+            ? connection.has_token
+              ? "Thay token · để trống để giữ token đã lưu"
+              : "Token mới · chưa có token đã lưu"
             : "System User access token"}
           <textarea
             name="token"
+            defaultValue=""
+            placeholder={
+              connection?.has_token
+                ? "Token đã lưu được ẩn. Dán token mới để thay thế."
+                : undefined
+            }
             required={!connection}
             autoComplete="off"
             spellCheck={false}
@@ -1317,16 +1410,16 @@ function ConnectionForm({
         </div>
         {error != null && <ErrorBox error={error} />}
         <div className="modal-footer">
-          <button type="button" onClick={onClose}>
+          <button type="button" disabled={busy} onClick={onClose}>
             Hủy
           </button>
-          <button className="primary" disabled={busy}>
+          <button className="primary" disabled={busy} aria-busy={busy}>
             {busy ? (
               <LoaderCircle size={16} className="spin" />
             ) : (
               <Check size={16} />
             )}
-            Lưu kết nối
+            Lưu System User / Token
           </button>
         </div>
       </form>
@@ -2705,6 +2798,8 @@ function Settings({ user, onUser }: { user: User; onUser: (u: User) => void }) {
     [mcpClient, setMcpClient] = useState<"codex" | "claude">("codex"),
     [creating, setCreating] = useState(false),
     [token, setToken] = useState<string>(),
+    [renaming, setRenaming] = useState<{ id: string; label: string }>(),
+    [renameError, setRenameError] = useState<unknown>(),
     [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false);
   const client = useQueryClient();
@@ -2884,6 +2979,19 @@ function Settings({ user, onUser }: { user: User; onUser: (u: User) => void }) {
                       </td>
                       <td>{date(t.expires_at)}</td>
                       <td>
+                        {!t.revoked_at && (
+                          <button
+                            disabled={busy}
+                            aria-label={`Đổi tên MCP token ${t.label}`}
+                            onClick={() => {
+                              setRenameError(undefined);
+                              setRenaming({ id: t.id, label: t.label });
+                            }}
+                          >
+                            <Pencil size={14} />
+                            Đổi tên
+                          </button>
+                        )}
                         {!t.revoked_at && !t.can_write && (
                           <button
                             disabled={busy}
@@ -3042,31 +3150,121 @@ function Settings({ user, onUser }: { user: User; onUser: (u: User) => void }) {
           )}
         </Modal>
       )}
+      {renaming && (
+        <Modal
+          title="Đổi tên MCP token"
+          onClose={() => !busy && setRenaming(undefined)}
+        >
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (busy) return;
+              const label = String(
+                new FormData(e.currentTarget).get("label") || "",
+              ).trim();
+              if (!label) {
+                setRenameError(new Error("Nhập tên token."));
+                return;
+              }
+              setBusy(true);
+              setRenameError(undefined);
+              try {
+                await api(`/api/account/mcp-tokens/${renaming.id}`, {
+                  method: "PATCH",
+                  body: JSON.stringify({ label }),
+                });
+                await client.invalidateQueries({ queryKey: [user.id] });
+                setRenaming(undefined);
+              } catch (e) {
+                setRenameError(e);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <label>
+              Tên token
+              <input
+                name="label"
+                defaultValue={renaming.label}
+                required
+                maxLength={100}
+                autoComplete="off"
+              />
+            </label>
+            <p className="hint">
+              Chỉ đổi tên hiển thị. Token và quyền hiện tại giữ nguyên.
+            </p>
+            {renameError != null && <ErrorBox error={renameError} />}
+            <div className="modal-footer">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setRenaming(undefined)}
+              >
+                Hủy
+              </button>
+              <button className="primary" disabled={busy} aria-busy={busy}>
+                {busy ? (
+                  <LoaderCircle size={16} className="spin" />
+                ) : (
+                  <Check size={16} />
+                )}
+                Lưu tên
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </>
   );
 }
 
+const roleOptions = [
+  { value: "owner", label: "Chủ kho" },
+  { value: "admin", label: "Quản trị viên" },
+];
+
 function UsersView({ user }: { user: User }) {
-  const query = useData<{
-    items: (User & { active: boolean })[];
-    max_users: number;
-  }>(user, "/api/admin/users");
+  const query = useData<{ items: AdminUser[]; max_users: number }>(
+    user,
+    "/api/admin/users",
+  );
   const client = useQueryClient();
-  const [target, setTarget] = useState<User & { active: boolean }>(),
-    [temporary, setTemporary] = useState<string>(),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState<unknown>();
+  // undefined = closed, null = create, AdminUser = edit
+  const [editing, setEditing] = useState<AdminUser | null>(),
+    [removing, setRemoving] = useState<AdminUser>(),
+    [capacity, setCapacity] = useState(false),
+    [temporary, setTemporary] = useState<{ username: string; password: string }>(),
+    [copyError, setCopyError] = useState<unknown>();
+  const items = query.data?.items || [];
+  const max = query.data?.max_users || 20;
+  const full = items.length >= max;
+  const activeAdmins = items.filter((u) => u.role === "admin" && u.active);
+  const isLastAdmin = (u: AdminUser) =>
+    u.role === "admin" && u.active && activeAdmins.length <= 1;
+  const refresh = () => client.invalidateQueries({ queryKey: [user.id] });
   return (
     <>
-      <div className="hint">
-        <Users size={16} />
-        {query.data?.items.length || 0}/20 tài khoản · Mỗi người dùng có kho
-        Page và token riêng.
+      <div className="toolbar">
+        <div className="hint">
+          <Users size={16} />
+          {items.length}/{max} tài khoản · Mỗi người dùng có kho Page và token
+          riêng.
+        </div>
+        <button
+          className="primary"
+          disabled={query.isPending}
+          onClick={() => (full ? setCapacity(true) : setEditing(null))}
+        >
+          <UserPlus size={16} />
+          Thêm tài khoản
+        </button>
       </div>
       {query.isPending ? (
         <Loading />
       ) : query.error ? (
-        <ErrorBox error={query.error} />
+        <ErrorBox error={query.error} retry={() => query.refetch()} />
       ) : (
         <div className="table-scroll">
           <table>
@@ -3079,127 +3277,419 @@ function UsersView({ user }: { user: User }) {
               </tr>
             </thead>
             <tbody>
-              {query.data.items.map((u) => (
-                <tr key={u.id}>
-                  <td>
-                    {u.username}
-                    {u.id === user.id && <small>Tài khoản của bạn</small>}
-                  </td>
-                  <td>{u.role === "admin" ? "Quản trị viên" : "Chủ kho"}</td>
-                  <td>
-                    <Badge status={u.active ? "active" : "disconnected"} />
-                    {u.must_change && <small>Cần đổi mật khẩu ban đầu</small>}
-                  </td>
-                  <td>
-                    <button onClick={() => setTarget(u)}>
-                      Quản lý
-                      <ChevronRight size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {items.map((u) => {
+                const self = u.id === user.id;
+                const lastAdmin = isLastAdmin(u);
+                return (
+                  <tr key={u.id}>
+                    <td>
+                      {u.display_name || u.username}
+                      <small>
+                        {u.username}
+                        {self && " · Tài khoản của bạn"}
+                      </small>
+                    </td>
+                    <td>{u.role === "admin" ? "Quản trị viên" : "Chủ kho"}</td>
+                    <td>
+                      <Badge status={u.active ? "active" : "disconnected"} />
+                      {u.must_change && <small>Cần đổi mật khẩu ban đầu</small>}
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        <button
+                          aria-label={`Quản lý ${u.username}`}
+                          onClick={() => setEditing(u)}
+                        >
+                          Quản lý
+                          <ChevronRight size={14} />
+                        </button>
+                        <button
+                          className="danger"
+                          aria-label={`Xóa tài khoản ${u.username}`}
+                          disabled={self || lastAdmin}
+                          title={
+                            self
+                              ? "Không thể xóa tài khoản đang đăng nhập"
+                              : lastAdmin
+                                ? "Cần giữ ít nhất một quản trị viên đang hoạt động"
+                                : "Xóa tài khoản và lưu trữ kho"
+                          }
+                          onClick={() => setRemoving(u)}
+                        >
+                          <Trash2 size={14} />
+                          Xóa
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          {!items.length && (
+            <Empty
+              icon={Users}
+              title="Chưa có tài khoản"
+              description="Thêm tài khoản để cấp kho Page riêng cho người dùng."
+            />
+          )}
         </div>
       )}
-      {target && (
-        <Modal
-          title={`Quản lý ${target.username}`}
-          onClose={() => {
-            setTarget(undefined);
-            setTemporary(undefined);
-            setError(undefined);
+      {editing !== undefined && (
+        <UserForm
+          target={editing}
+          self={editing?.id === user.id}
+          lastAdmin={editing ? isLastAdmin(editing) : false}
+          count={items.length}
+          max={max}
+          onClose={() => setEditing(undefined)}
+          onSaved={async (username, password) => {
+            await refresh();
+            setEditing(undefined);
+            if (password) {
+              setCopyError(undefined);
+              setTemporary({ username, password });
+            }
           }}
+        />
+      )}
+      {removing && (
+        <DeleteUser
+          target={removing}
+          onClose={() => setRemoving(undefined)}
+          onDone={async () => {
+            await refresh();
+            setRemoving(undefined);
+          }}
+        />
+      )}
+      {capacity && (
+        <Modal title="Đã đủ số tài khoản" onClose={() => setCapacity(false)}>
+          <p>
+            Hệ thống đang có {items.length}/{max} tài khoản, đã đạt giới hạn tối
+            đa {max}. Để thêm tài khoản mới, hãy xóa một tài khoản không còn sử
+            dụng. Kho của tài khoản đã xóa vẫn được lưu trữ.
+          </p>
+          <div className="modal-footer">
+            <button className="primary" onClick={() => setCapacity(false)}>
+              Đã hiểu
+            </button>
+          </div>
+        </Modal>
+      )}
+      {temporary && (
+        <Modal
+          title={`Mật khẩu tạm của ${temporary.username}`}
+          onClose={() => setTemporary(undefined)}
         >
-          {temporary ? (
-            <div className="token-result">
-              <p>Mật khẩu tạm · yêu cầu đổi khi đăng nhập</p>
-              <code>{temporary}</code>
-              <button
-                onClick={() =>
-                  navigator.clipboard
-                    .writeText(temporary)
-                    .catch((e) => setError(e))
-                }
-              >
-                <Copy size={15} />
-                Sao chép
-              </button>
-            </div>
-          ) : (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget);
-                setBusy(true);
-                try {
-                  const r = await api(`/api/admin/users/${target.id}`, {
-                    method: "PATCH",
-                    body: JSON.stringify({
-                      username: f.get("username"),
-                      role: f.get("role"),
-                      active: f.get("active") === "on",
-                      reset_password: f.get("reset_password") === "on",
-                    }),
-                  });
-                  await client.invalidateQueries({ queryKey: [user.id] });
-                  if (r.temporary_password) setTemporary(r.temporary_password);
-                  else setTarget(undefined);
-                } catch (e) {
-                  setError(e);
-                } finally {
-                  setBusy(false);
-                }
-              }}
+          <p>
+            Mật khẩu chỉ hiển thị trong lần này. Người dùng phải đổi mật khẩu khi
+            đăng nhập lần đầu.
+          </p>
+          <div className="token-result">
+            <code>{temporary.password}</code>
+            <button
+              onClick={() =>
+                navigator.clipboard
+                  .writeText(temporary.password)
+                  .catch((e) => setCopyError(e))
+              }
             >
-              <label>
-                Tên đăng nhập
-                <input
-                  name="username"
-                  required
-                  pattern="[a-z0-9_-]{3,32}"
-                  defaultValue={target.username}
-                />
-              </label>
-              <label>
-                Vai trò
-                <select name="role" defaultValue={target.role}>
-                  <option value="owner">Chủ kho</option>
-                  <option value="admin">Quản trị viên</option>
-                </select>
-              </label>
-              <label className="checkbox">
-                <input
-                  name="active"
-                  type="checkbox"
-                  defaultChecked={target.active}
-                />
-                Cho phép đăng nhập và chạy tác vụ
-              </label>
-              {target.id !== user.id && (
-                <label className="checkbox">
-                  <input name="reset_password" type="checkbox" />
-                  Cấp mật khẩu tạm mới
-                </label>
-              )}
-              <p className="hint">
-                Lưu thay đổi sẽ thu hồi phiên đăng nhập và MCP token của tài
-                khoản này.
-              </p>
-              {error != null && <ErrorBox error={error} />}
-              <div className="modal-footer">
-                <button type="button" onClick={() => setTarget(undefined)}>
-                  Hủy
-                </button>
-                <button className="primary" disabled={busy}>
-                  Lưu thay đổi
-                </button>
-              </div>
-            </form>
-          )}
+              <Copy size={15} />
+              Sao chép
+            </button>
+          </div>
+          {copyError != null && <ErrorBox error={copyError} />}
+          <div className="modal-footer">
+            <button className="primary" onClick={() => setTemporary(undefined)}>
+              Đã lưu
+            </button>
+          </div>
         </Modal>
       )}
     </>
+  );
+}
+
+function UserForm({
+  target,
+  self,
+  lastAdmin,
+  count,
+  max,
+  onClose,
+  onSaved,
+}: {
+  target: AdminUser | null;
+  self: boolean;
+  lastAdmin: boolean;
+  count: number;
+  max: number;
+  onClose: () => void;
+  onSaved: (username: string, password: string | null) => Promise<void>;
+}) {
+  const [role, setRole] = useState<string>(target?.role || "owner"),
+    [passwordMode, setPasswordMode] = useState(target ? "keep" : "generate"),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState<unknown>();
+  const passwordOptions = target
+    ? [
+        { value: "keep", label: "Giữ mật khẩu hiện tại" },
+        { value: "reset", label: "Cấp mật khẩu tạm mới" },
+        { value: "set", label: "Đặt mật khẩu mới" },
+      ]
+    : [
+        { value: "generate", label: "Tạo mật khẩu tạm tự động" },
+        { value: "set", label: "Tự đặt mật khẩu" },
+      ];
+  return (
+    <Modal
+      title={target ? `Quản lý ${target.username}` : "Thêm tài khoản"}
+      onClose={() => !busy && onClose()}
+    >
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (busy) return;
+          const f = new FormData(e.currentTarget);
+          const username = String(f.get("username") || "").trim();
+          const display_name = String(f.get("display_name") || "").trim();
+          const password = String(f.get("password") || "");
+          if (passwordMode === "set" && password.length < 12) {
+            setError(new Error("Mật khẩu cần tối thiểu 12 ký tự."));
+            return;
+          }
+          if (
+            passwordMode === "set" &&
+            password !== String(f.get("confirm_password") || "")
+          ) {
+            setError(new Error("Mật khẩu xác nhận chưa khớp."));
+            return;
+          }
+          setBusy(true);
+          setError(undefined);
+          try {
+            const body: Record<string, unknown> = { username, display_name, role };
+            if (target) {
+              body.active = f.get("active") === "on";
+              if (passwordMode === "reset") body.reset_password = true;
+            }
+            if (passwordMode === "set") body.password = password;
+            const r = await api<{ temporary_password?: string | null }>(
+              target ? `/api/admin/users/${target.id}` : "/api/admin/users",
+              {
+                method: target ? "PATCH" : "POST",
+                body: JSON.stringify(body),
+              },
+            );
+            await onSaved(username, r.temporary_password || null);
+          } catch (e) {
+            setError(
+              !target && e instanceof ApiError && e.status === 409
+                ? new Error(
+                    `${e.message} (giới hạn ${max} tài khoản — xóa tài khoản không dùng để thêm mới.)`,
+                  )
+                : e,
+            );
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {!target && (
+          <p className="hint">
+            {count}/{max} tài khoản · Tài khoản mới có kho Page, System User và
+            MCP token riêng.
+          </p>
+        )}
+        <div className="form-grid">
+          <label>
+            Tên hiển thị
+            <input
+              name="display_name"
+              defaultValue={target?.display_name || ""}
+              maxLength={100}
+              autoComplete="off"
+            />
+          </label>
+          <label>
+            Tên đăng nhập
+            <input
+              name="username"
+              required
+              pattern="[a-z0-9_-]{3,32}"
+              title="3–32 ký tự: chữ thường, số, _ hoặc -"
+              defaultValue={target?.username || ""}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+        </div>
+        <div className="field">
+          <span>Vai trò</span>
+          <Dropdown
+            label="Vai trò"
+            value={role}
+            options={roleOptions}
+            disabled={busy || (target != null && (self || lastAdmin))}
+            onChange={setRole}
+          />
+        </div>
+        {target && (self || lastAdmin) && (
+          <small className="muted">
+            {self
+              ? "Không thể tự đổi vai trò của tài khoản đang đăng nhập."
+              : "Đây là quản trị viên hoạt động cuối cùng."}
+          </small>
+        )}
+        {target && (
+          <label className="checkbox">
+            <input
+              name="active"
+              type="checkbox"
+              defaultChecked={target.active}
+              disabled={self || lastAdmin}
+            />
+            Cho phép đăng nhập và chạy tác vụ
+          </label>
+        )}
+        {target && (self || lastAdmin) && (
+          <input type="hidden" name="active" value="on" />
+        )}
+        {(!target || !self) && (
+          <div className="field">
+            <span>Mật khẩu</span>
+            <Dropdown
+              label="Mật khẩu"
+              value={passwordMode}
+              options={passwordOptions}
+              disabled={busy}
+              onChange={setPasswordMode}
+            />
+          </div>
+        )}
+        {passwordMode === "set" && (
+          <div className="form-grid">
+            <label>
+              Mật khẩu mới
+              <input
+                name="password"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={12}
+                maxLength={1024}
+              />
+            </label>
+            <label>
+              Xác nhận mật khẩu
+              <input
+                name="confirm_password"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={12}
+                maxLength={1024}
+              />
+            </label>
+          </div>
+        )}
+        <p className="hint">
+          {target
+            ? "Đổi quyền, trạng thái hoặc mật khẩu sẽ thu hồi phiên đăng nhập và MCP token của tài khoản này."
+            : passwordMode === "generate"
+              ? "Mật khẩu tạm sẽ hiển thị một lần sau khi tạo. Người dùng phải đổi khi đăng nhập."
+              : "Mật khẩu tối thiểu 12 ký tự."}
+        </p>
+        {error != null && <ErrorBox error={error} />}
+        <div className="modal-footer">
+          <button type="button" disabled={busy} onClick={onClose}>
+            Hủy
+          </button>
+          <button className="primary" disabled={busy} aria-busy={busy}>
+            {busy ? (
+              <LoaderCircle size={16} className="spin" />
+            ) : (
+              <Check size={16} />
+            )}
+            {target ? "Lưu thay đổi" : "Tạo tài khoản"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function DeleteUser({
+  target,
+  onClose,
+  onDone,
+}: {
+  target: AdminUser;
+  onClose: () => void;
+  onDone: () => Promise<void>;
+}) {
+  const [typed, setTyped] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState<unknown>();
+  const matches = typed.trim() === target.username;
+  return (
+    <Modal
+      title={`Xóa tài khoản ${target.username}?`}
+      onClose={() => !busy && onClose()}
+    >
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (busy || !matches) return;
+          setBusy(true);
+          setError(undefined);
+          try {
+            await api(`/api/admin/users/${target.id}`, { method: "DELETE" });
+            await onDone();
+          } catch (e) {
+            setError(e);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <p>
+          Tài khoản <strong>{target.username}</strong>
+          {target.display_name ? ` (${target.display_name})` : ""} sẽ không thể
+          đăng nhập nữa. Mọi phiên đăng nhập và MCP token của tài khoản này bị
+          thu hồi ngay.
+        </p>
+        <p className="hint">
+          Kho dữ liệu đã lưu (Page, System User, video, lịch sử Reel) được giữ
+          lại dưới dạng lưu trữ, không bị xóa tự động.
+        </p>
+        <label>
+          Nhập <strong>{target.username}</strong> để xác nhận
+          <input
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            aria-label={`Nhập ${target.username} để xác nhận xóa`}
+          />
+        </label>
+        {error != null && <ErrorBox error={error} />}
+        <div className="modal-footer">
+          <button type="button" disabled={busy} onClick={onClose}>
+            Quay lại
+          </button>
+          <button className="danger" disabled={busy || !matches} aria-busy={busy}>
+            {busy ? (
+              <LoaderCircle size={16} className="spin" />
+            ) : (
+              <Trash2 size={16} />
+            )}
+            Xóa {target.username}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -3578,6 +4068,20 @@ function Composer({
   );
 }
 
+function DevModeNotice({ user }: { user: User }) {
+  const query = useData<{ publication_disabled?: boolean }>(user, "/api/reels/config");
+  if (!query.data?.publication_disabled) return null;
+  return <div className="dev-mode-notice" role="status">
+    <ShieldCheck size={18} />
+    <div><strong>Dev/test · Meta chỉ đọc</strong><small>Bạn vẫn quản lý tài khoản, token và xem thống kê. Đăng Reel và sửa nội dung trên Meta đang tắt.</small></div>
+  </div>;
+}
+
+function AdminUserCount({ user }: { user: User }) {
+  const query = useData<{ items: AdminUser[]; max_users: number }>(user, "/api/admin/users");
+  return <span className="small-count">{query.data ? `${query.data.items.length}/${query.data.max_users}` : "—"}</span>;
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null),
     [boot, setBoot] = useState(true),
@@ -3734,7 +4238,7 @@ function App() {
               onClick={() => navigate("users")}
             >
               <Users size={17} />
-              Người dùng<span className="small-count">20</span>
+              Người dùng<AdminUserCount user={user} />
             </button>
           )}
           <button
@@ -3786,6 +4290,7 @@ function App() {
           </div>
         </header>
         <main className="main-content">
+          <DevModeNotice user={user} />
           <div className="page-heading">
             <div>
               <h1>{titles[current][1]}</h1>

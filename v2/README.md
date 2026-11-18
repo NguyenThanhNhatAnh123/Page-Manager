@@ -6,6 +6,10 @@ Server Windows 11 có thể chạy trực tiếp, không cần Ubuntu/Hyper-V/WS
 
 Trên máy dev dùng **`START-V2-DEV.bat`**, dừng bằng **`STOP-V2-DEV.bat`**. Đây là database dev riêng, không đọc `.env`/kho Page cũ. Xem [hướng dẫn dev/test và probe MCP CLI](examples/windows-dev.md).
 
+Quản trị viên có thể tạo, sửa tên hiển thị/tên đăng nhập, đổi quyền, khóa, reset mật khẩu và xóa tài khoản trong **Người dùng**, tối đa 20 tài khoản. Xóa tài khoản thu hồi quyền đăng nhập/MCP và giữ kho theo UUID trong bản lưu trữ; tài khoản mới luôn có UUID/kho mới. Không xóa chính mình hoặc quản trị viên hoạt động cuối cùng; tài khoản còn lịch chưa kết thúc cần xử lý trước. Token System User có tạo/sửa/thay/xóa credential riêng từng kho; xóa token ngắt kết nối, giữ lịch sử Page/Reel. MCP token cá nhân có đổi tên, đổi quyền và thu hồi.
+
+Kho admin đã được sao chép theo yêu cầu từ Codespaces sang dev local: 43 Page, hai token, 32 video và 32 Reel hoàn tất. **`PM_DEV_READ_ONLY=1`** khóa scheduler cùng HTTP/MCP đăng, đặt lịch và sửa nội dung Meta; thao tác quản trị local và đồng bộ thống kê vẫn dùng được. ID/trạng thái lịch sử cũ được bảo toàn. Không bật đăng thật trong bản dev này.
+
 ## Phạm vi
 
 - Giữ lõi Python `PageManager`, `TokenReelAssets`, `TokenReelScheduler`, revision token, UUID chống trùng và checkpoint trước mỗi lệnh Meta.

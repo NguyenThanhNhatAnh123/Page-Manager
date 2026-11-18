@@ -4,6 +4,7 @@ from fastapi import Request,HTTPException
 from fastapi.responses import JSONResponse,Response
 from pydantic import ValidationError
 from .publication import DirectReelInput as TokenReelInput,AGENT_INSTRUCTIONS,PUBLICATION_POLICY
+from .publication import dev_read_only,publication_policy
 
 
 def install(app,workspace_for,create_reel,reel_action):
@@ -83,7 +84,7 @@ def install(app,workspace_for,create_reel,reel_action):
         def error(code,message):return {'jsonrpc':'2.0','id':key,'error':{'code':code,'message':message}}
         if body.get('jsonrpc')!='2.0':return error(-32600,'Invalid Request')
         if method in ('notifications/initialized','notifications/cancelled'):return Response(status_code=202)
-        if method=='initialize':result={'protocolVersion':'2025-03-26','capabilities':{'tools':{'listChanged':False}},'serverInfo':{'name':'via-page-manager','version':'2.0.0'},'instructions':AGENT_INSTRUCTIONS}
+        if method=='initialize':result={'protocolVersion':'2025-03-26','capabilities':{'tools':{'listChanged':False}},'serverInfo':{'name':'via-page-manager','version':'2.0.0'},'instructions':('Bản dev/test chỉ đọc Meta: không đăng, đặt lịch hoặc sửa nội dung trên Meta. Chỉ đọc kho và đồng bộ thống kê.' if dev_read_only() else AGENT_INSTRUCTIONS)}
         elif method=='ping':result={}
         elif method=='tools/list':
             tools=[]
@@ -99,6 +100,8 @@ def install(app,workspace_for,create_reel,reel_action):
             if name not in {**read_tools,**writes}:return error(-32601,'Unknown tool')
             if not isinstance(args,dict):return error(-32602,'Invalid arguments')
             if name in writes and request.headers.get('x-pm-capability')!='write':return error(-32603,'MCP token chỉ có quyền đọc.')
+            if dev_read_only() and name in ('pages_edit','pages_reel_now','pages_reel_schedule','pages_reel_create','pages_reel_amend','pages_reel_resume','pages_reel_cancel','pages_reel_verify'):
+                return error(-32603,'Bản dev/test đã khóa thao tác đăng, đặt lịch và sửa Meta; lịch sử Reel được giữ nguyên.')
             props=({**read_tools,**writes}[name])[1]
             if isinstance(props,dict) and set(args)-set(props):return error(-32602,'Unexpected arguments')
             if args.get('connection_id') is not None and (type(args['connection_id']) is not int or args['connection_id']<1):return error(-32602,'Invalid connection ID')
@@ -116,7 +119,7 @@ def install(app,workspace_for,create_reel,reel_action):
             workspace=workspace_for(request);manager=workspace.manager;store=manager.store
             try:
                 parsed=props.model_validate(args) if isinstance(props,type) else None
-                if name=='via_status':data={'available':True,'stats':manager.overview()['stats'],'publication_policy':dict(PUBLICATION_POLICY)}
+                if name=='via_status':data={'available':True,'stats':manager.overview()['stats'],'publication_policy':publication_policy()}
                 elif name=='pages_overview':data=manager.overview(timezone=zone)
                 elif name=='pages_connections':data=manager.connections(limit,offset,search,connected_only=args.get('connected_only',False))
                 elif name=='pages_list':data=manager.pages(limit=limit,offset=offset,search=search,timezone=zone,status=args.get('status',''),connection_id=args.get('connection_id'),connection_active_only=True)

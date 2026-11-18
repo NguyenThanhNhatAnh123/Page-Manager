@@ -651,3 +651,49 @@ async def test_calendar_system_groups_and_local_week_bounds_stay_scoped(runtime,
         assert (await client.get('/api/reels/groups?search=Calendar%20fixture',headers=foreign)).json()['total']==0
         assert (await client.get('/api/reels/groups?calendar=2099-99',headers=headers)).status_code==422
         assert (await client.get('/api/reels?date_from=2099-11-20&date_to=2099-11-01',headers=headers)).status_code==422
+
+
+async def test_dev_clone_blocks_meta_writes_and_scheduler_but_keeps_reading(runtime,monkeypatch):
+    from worker import app as module
+    registry,app,owners=runtime;monkeypatch.setattr(module,'registry',registry)
+    monkeypatch.setenv('PM_DEV_READ_ONLY','1')
+    workspace=registry.get(owners[6])
+    def forbidden(*args,**kwargs):raise AssertionError('Dev clone must never scan or dispatch posting work')
+    monkeypatch.setattr(workspace.manager.store,'reel_due',forbidden)
+    workspace.scheduler.tick()
+    assert workspace.scheduler.status()['publication_disabled'] is True
+    headers={'x-pm-internal':os.environ['PM_INTERNAL_KEY'],'x-pm-workspace':owners[6],'x-pm-capability':'write'}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
+        assert (await client.get('/api/connections',headers=headers)).status_code==200
+        scheduled={'request_id':str(uuid4()),'page_id':'555','connection_id':1,'asset_id':'a'*32,
+                   'scheduled_local':'2099-11-17T12:00:00','timezone':'America/Los_Angeles','fold':0}
+        assert (await client.post('/api/reels',headers=headers,json=scheduled)).status_code==409
+        assert (await client.post('/api/reels/1/resume',headers=headers)).status_code==409
+        edit={'connection_id':1,'request_id':str(uuid4()),'bio':'Dev must not edit Meta'}
+        assert (await client.post('/api/pages/555/edit',headers=headers,json=edit)).status_code==409
+        for name in ('pages_reel_now','pages_reel_create','pages_reel_resume','pages_edit'):
+            result=(await client.post('/mcp',headers=headers,json={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':name,'arguments':{}}})).json()
+            assert 'error' in result and 'dev/test' in result['error']['message']
+        status=(await client.post('/mcp',headers=headers,json={'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'via_status','arguments':{}}})).json()
+        assert json.loads(status['result']['content'][0]['text'])['publication_policy']['mode']=='dev_read_only'
+
+
+async def test_system_user_token_create_update_delete_never_returns_the_secret(runtime,monkeypatch):
+    from worker import app as module
+    registry,app,owners=runtime;monkeypatch.setattr(module,'registry',registry)
+    monkeypatch.setenv('PM_DEV_READ_ONLY','1')
+    headers={'x-pm-internal':os.environ['PM_INTERNAL_KEY'],'x-pm-workspace':owners[6],'x-pm-capability':'write'}
+    secret='FakeSystemUserToken_CrudPrivate'
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
+        created=await client.post('/api/connections',headers=headers,json={'label':'CRUD token fixture','token_type':'system_user','token':secret})
+        assert created.status_code==201 and secret not in created.text
+        connection=created.json()['connection'];cid=connection['id']
+        changed=await client.put(f'/api/connections/{cid}',headers=headers,json={'label':'Renamed CRUD token','token_type':'system_user','token':secret+'2','revision':connection['revision']})
+        assert changed.status_code==200 and secret not in changed.text
+        row=changed.json()['connection']
+        other={**headers,'x-pm-workspace':owners[7]}
+        assert (await client.request('DELETE',f'/api/connections/{cid}',headers=other,json={'revision':row['revision']})).status_code==404
+        deleted=await client.request('DELETE',f'/api/connections/{cid}',headers=headers,json={'revision':row['revision']})
+        assert deleted.status_code==200 and secret not in deleted.text
+        stored=registry.get(owners[6]).manager.store.connection(cid)
+        assert stored['encrypted_token'] is None and not stored['connected']

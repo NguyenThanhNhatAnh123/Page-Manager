@@ -675,6 +675,50 @@ small.view-tier.breakout {
     margin-right: 16px;
   }
 }
+/* Form field wrapping a custom Dropdown (a <label> would re-open the menu). */
+.modal .field {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+  font-size: var(--text-label, 12px);
+  font-weight: 500;
+  color: var(--ink);
+}
+.modal .field .select-trigger {
+  min-width: 0;
+}
+.modal .field .select-trigger > span {
+  max-width: none;
+}
+.modal .field .select-menu {
+  left: 0;
+  right: 0;
+  min-width: 100%;
+}
+.modal .field + .muted {
+  display: block;
+  margin-top: -10px;
+}
+.dev-mode-notice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  padding: 14px 18px;
+  border: 1px solid var(--line, #ddd);
+  border-left: 3px solid #bdf578;
+  border-radius: 16px;
+  color: var(--ink);
+  font-size: 13px;
+}
+.dev-mode-notice svg { flex-shrink: 0; margin-top: 2px; }
+.dev-mode-notice small { display: block; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+.users-toolbar .hint {
+  margin: 0;
+}
+.row-actions {
+  flex-wrap: wrap;
+}
 @media (prefers-reduced-motion: reduce) {
   button.system-calendar-card,
   .select-trigger svg {

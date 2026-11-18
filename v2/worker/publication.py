@@ -1,5 +1,6 @@
 """Direct publication policy for v2, independent of legacy Telegram review."""
 from typing import Literal
+import os
 
 from page_manager.reel_inputs import TokenReelInput
 from page_manager.reel_scheduler import TokenReelScheduler
@@ -11,6 +12,20 @@ PUBLICATION_POLICY = {
     'telegram_approval': False,
     'repeat_confirmation_required': False,
 }
+
+
+def dev_read_only():
+    return os.environ.get('PM_DEV_READ_ONLY') == '1'
+
+
+def publication_policy():
+    return dict(PUBLICATION_POLICY) | ({'mode':'dev_read_only','posting_enabled':False} if dev_read_only() else {})
+
+
+def ensure_meta_writes_allowed():
+    if dev_read_only():
+        from page_manager.errors import AppError
+        raise AppError('Bản dev/test đang khóa đăng Reel và sửa nội dung trên Meta. Lịch sử đã đăng được giữ nguyên.','dev_read_only',409)
 
 AGENT_INSTRUCTIONS = (
     'Mỗi MCP token chỉ truy cập kho của chủ token; không trả token Meta. '
@@ -41,13 +56,20 @@ class DirectReelScheduler(TokenReelScheduler):
     Neither their settings nor queued review tickets control v2 publication.
     """
     def status(self):
-        return super().status() | {'publication_policy': dict(PUBLICATION_POLICY)}
+        values=super().status() | {'publication_policy': publication_policy()}
+        if dev_read_only():values.update(scheduler_running=False,scheduler_healthy=True,active_count=0,publication_disabled=True)
+        return values
+
+    def tick(self):
+        if dev_read_only():return
+        return super().tick()
 
     def public(self, row):
         values = super().public(row)
         for name in ('approval_policy', 'review_batch', 'approve_by'):
             values.pop(name, None)
-        values['publication_policy'] = dict(PUBLICATION_POLICY)
+        values['publication_policy'] = publication_policy()
+        if dev_read_only():values.update(can_cancel=False,can_resume=False,can_verify=False)
         if values['status'] == 'scheduled' and values['step'] == 'approval':
             values.update(step='waiting', message='Đã xếp lịch đăng trực tiếp; sẽ chạy khi đến giờ.')
         return values

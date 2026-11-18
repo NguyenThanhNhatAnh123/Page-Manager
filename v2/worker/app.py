@@ -32,7 +32,7 @@ from page_manager.errors import AppError
 from page_manager.inputs import ConnectionInput,ConnectionUpdate,PageRefresh,PageEdit,PageEditSource,PageManagementRevision
 from page_manager.postgres import prepare
 from page_manager.reel_assets import TokenReelAssets,ReelAssetError,ReelAssetTooLarge,MAX_VIDEO_BYTES
-from .publication import DirectReelInput as TokenReelInput,DirectReelScheduler
+from .publication import DirectReelInput as TokenReelInput,DirectReelScheduler,ensure_meta_writes_allowed
 from page_manager.avatars import PageAvatars,AvatarUnavailable
 from .analytics import Analytics,ID
 from .catalog import ranked_pages,calendar_groups
@@ -235,6 +235,11 @@ class Revision(BaseModel):
 async def disconnect(request:Request,cid:int,body:Revision):return ws(request).manager.disconnect(cid,body.revision)
 
 
+@app.delete('/api/connections/{cid}')
+async def delete_connection(request:Request,cid:int,body:Revision):
+    return ws(request).manager.disconnect(cid,body.revision)
+
+
 @app.get('/api/pages')
 async def pages(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200),status:str='',connection_id:int|None=None,removed:bool=False,sort:str='views_desc'):
     workspace=ws(request)
@@ -271,7 +276,9 @@ async def edit_options(request:Request,pid:str,body:PageEditSource):return await
 
 
 @app.post('/api/pages/{pid}/edit')
-async def edit_page(request:Request,pid:str,body:PageEdit):return await ws(request).manager.edit_page(pid,body)
+async def edit_page(request:Request,pid:str,body:PageEdit):
+    ensure_meta_writes_allowed()
+    return await ws(request).manager.edit_page(pid,body)
 
 
 @app.get('/api/overview')
@@ -386,11 +393,14 @@ async def reel(request:Request,job_id:int):return {'job':ws(request).scheduler.p
 
 from .amend import AmendReel,amend
 @app.patch('/api/reels/{job_id}')
-async def amend_reel(request:Request,job_id:int,body:AmendReel):return amend(ws(request),job_id,body)
+async def amend_reel(request:Request,job_id:int,body:AmendReel):
+    ensure_meta_writes_allowed()
+    return amend(ws(request),job_id,body)
 
 
 @app.post('/api/reels',status_code=201)
 async def create_reel(request:Request,body:TokenReelInput):
+    ensure_meta_writes_allowed()
     workspace=ws(request);store=workspace.manager.store
     previous=store.reel_job_by_request(body.request_id);instant=datetime.now(timezone.utc)
     if body.publish_mode!='scheduled':raise AppError('V2 hỗ trợ đăng ngay hoặc đặt lịch có thời điểm cụ thể.','invalid_publish_mode',422)
@@ -405,6 +415,7 @@ async def create_reel(request:Request,body:TokenReelInput):
 
 @app.post('/api/reels/{job_id}/{action}')
 async def reel_action(request:Request,job_id:int,action:str):
+    ensure_meta_writes_allowed()
     if action not in ('cancel','resume','verify'):raise HTTPException(404)
     return {'job':await getattr(ws(request).scheduler,action)(job_id)}
 

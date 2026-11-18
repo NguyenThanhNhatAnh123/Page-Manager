@@ -2,6 +2,12 @@
 
 Môi trường riêng tại `v2/.runtime/native-dev`, PostgreSQL 18 portable trên **127.0.0.1:55434**, Rust gateway **127.0.0.1:8020**, Python worker **127.0.0.1:8021**. Không đăng ký Windows Service/Task Scheduler, không đổi DNS, không khởi động Codespaces. Tên miền `eagleglobal2027.com` dành cho server riêng.
 
+Kho admin Codespaces đã được sao chép một lần theo yêu cầu: 43 Page, hai token, 32 video và 32 Reel đã hoàn tất. Tài khoản/mật khẩu/MCP local được giữ, token Meta được mã hóa lại theo khóa và UUID admin local. Backup mã hóa và bản trước chuyển nằm riêng trên máy; không đưa vào Git. Các thành viên được nạp vào kho trống độc lập, không nhận token của admin.
+
+`PM_DEV_READ_ONLY=1` đang bật: scheduler không chạy tác vụ đăng; HTTP/MCP chặn đăng, đặt lịch, tiếp tục/xác minh và sửa Meta. Giao diện hiển thị **Dev/test · Meta chỉ đọc**. CRUD tài khoản, token local, xem lịch sử và đọc/cập nhật thống kê vẫn hoạt động. Giữ chế độ này khi dev/test; không dùng việc sửa lịch cũ để kiểm tra đăng bài.
+
+Trong **Người dùng**, quản trị viên có tạo/sửa/khóa/reset/xóa tài khoản và tên hiển thị. Giới hạn vẫn 20, gồm tài khoản đang dùng và tài khoản mẫu còn lại. Xóa một tài khoản không dùng để mở chỗ khi đã đủ 20; ứng dụng giữ kho cũ thành lưu trữ, không giao lại dữ liệu đó cho tài khoản mới. Trong **System User / Token**, xóa token ngắt nguồn/loại credential nhưng giữ lịch sử Page và Reel. Token đã lưu không được hiển thị ngược.
+
 ## Chạy và dừng
 
 Sau khi Python dependencies, portable PostgreSQL và Rust/FE đã build:
