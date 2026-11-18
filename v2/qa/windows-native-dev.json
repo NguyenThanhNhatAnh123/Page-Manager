@@ -1,0 +1,96 @@
+{
+  "date": "2026-11-17",
+  "timezone": "America/Los_Angeles",
+  "checked_at": "2026-11-18T01:44:21.749829+00:00",
+  "source_commit": "a96e15de6147c107f14f620d6cdd8ab1d49ea8c5",
+  "result": "success",
+  "mode": "native-windows-dev-only",
+  "ci": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44215723721",
+  "stack": {
+    "gateway": "Rust 1.90, Windows MSVC, locally built release",
+    "worker": "Python 3.12",
+    "database": "PostgreSQL 18.7 portable",
+    "frontend": "React/TypeScript production build"
+  },
+  "local_checks": {
+    "python_tests": 57,
+    "gateway_tests": 6,
+    "frontend_tests": 6,
+    "frontend_build": true,
+    "frontend_http": 200,
+    "health": {
+      "database": true,
+      "ok": true,
+      "worker": true
+    },
+    "fresh_dev_accounts": 20,
+    "session_days": 30,
+    "login_sync_request_persisted": true,
+    "stale_mcp_token_recovery": true,
+    "restart_preserved_accounts_and_mcp_token": true,
+    "test_client_timeout_seconds": 30
+  },
+  "mcp": {
+    "protocol": "2025-03-26",
+    "tool_count": 30,
+    "full_business_scope_in_owner_workspace": true,
+    "codex": {
+      "client": "codex",
+      "exit_code": 0,
+      "completed_mcp_tools": [
+        "pages_connections",
+        "via_status"
+      ],
+      "passed": true
+    },
+    "claude": {
+      "client": "claude",
+      "exit_code": 0,
+      "completed_mcp_tools": [
+        "pages_connections",
+        "via_status"
+      ],
+      "passed": true
+    }
+  },
+  "claude_review": {
+    "client": "Claude Code 2.1.326",
+    "source_files_supplied": 6,
+    "tools_enabled": false,
+    "applied": [
+      "refuse new encryption key when dev data exists without its config",
+      "prefer locally built release and record selected binary",
+      "disable proxy for gateway-to-worker traffic",
+      "allowlist native environment and skip legacy dotenv",
+      "require native dev runtime lock before probing",
+      "recover revoked or expired dev MCP test token in setup",
+      "stop gateway before worker",
+      "redact DSN password separately",
+      "bounded login sync and yielding scheduler"
+    ]
+  },
+  "ci_checks": {
+    "linux_and_windows_success": true,
+    "windows_release_build": true,
+    "windows_system_task_start_restart_and_20_accounts": true,
+    "https_configuration_validation_only": true,
+    "windows_bundle_created": true
+  },
+  "constraints": {
+    "loopback_only": true,
+    "native_dev_postgres_port": 55434,
+    "separate_dev_and_test_databases": true,
+    "meta_credentials_imported": false,
+    "real_meta_publications": false,
+    "codespace_data_modified": false,
+    "dns_modified": false,
+    "windows_server_services_installed_on_dev": false,
+    "security_policy_modified_by_launcher": false
+  },
+  "limits": [
+    "Functional dev/test verification, not a production SLA or sustained 20-user benchmark.",
+    "Meta metrics and real publishing were not retested in this empty dev workspace.",
+    "eagleglobal2027.com TLS/DNS and the separate physical server are not deployed.",
+    "CI Windows SYSTEM task checks run on windows-2025; no physical Windows 11 server reboot was performed."
+  ]
+}

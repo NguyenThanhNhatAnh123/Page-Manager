@@ -17,7 +17,9 @@ Sau khi Python dependencies, portable PostgreSQL và Rust/FE đã build:
 
 Launcher tạo database và khóa dev riêng, giữ nguyên chúng ở các lần chạy sau. Mở **http://127.0.0.1:8020**. Cài mới có 20 người dùng trống; mật khẩu ban đầu trong `.runtime/native-dev/data/initial-users.txt`. Sau khi chạy probe, tài khoản admin dev đổi mật khẩu; thông tin hiện hành nằm trong **`.runtime/native-dev/admin-login.txt`**. Không đưa các tệp đó, `dev.env`, key, logs hay database vào Git.
 
-Rust dùng bộ portable MSVC/SDK hiện có hoặc Rust 1.90 + MSVC chính thức. Launcher ưu tiên `bin/pagemanager-gateway.exe` từ bundle Windows đã xác minh, rồi `gateway/target/release`, cuối cùng mới `debug`. Dùng release để kiểm tra tải 20 tài khoản: Argon2 trong bản debug chậm hơn đáng kể và có thể làm đầy hàng chờ đăng nhập. `start.ps1` cũ dùng `.env` riêng và không phải launcher dev ở trên. Bộ dev mới không đọc token/tài khoản từ Codespaces hoặc dữ liệu cũ.
+Rust dùng bộ portable MSVC/SDK hiện có hoặc Rust 1.90 + MSVC chính thức. Launcher ưu tiên `gateway/target/release`, rồi `bin/pagemanager-gateway.exe` từ bundle đã xác minh, cuối cùng mới `debug`; đường dẫn được in khi chạy và ghi trong `runtime.json`. Dùng release để kiểm tra tải 20 tài khoản: Argon2 trong bản debug chậm hơn đáng kể và có thể làm đầy hàng chờ đăng nhập. `start.ps1` cũ dùng `.env` riêng và không phải launcher dev ở trên. Bộ dev mới không đọc token/tài khoản từ Codespaces hoặc dữ liệu cũ.
+
+Nếu mất `dev.env` nhưng database/media vẫn còn, launcher dừng để bạn khôi phục đúng cấu hình và khóa, không tạo khóa mới. Runtime native lọc biến môi trường kế thừa và bỏ qua `.env` cũ. Kết nối gateway → worker không dùng proxy của hệ thống.
 
 ## MCP Codex / Claude CLI thật
 
@@ -28,6 +30,8 @@ Rust dùng bộ portable MSVC/SDK hiện có hoặc Rust 1.90 + MSVC chính th�
 ```
 
 Probe tạo token nghiệp vụ một ngày trong kho **admin dev**, truyền qua biến môi trường của tiến trình con và dùng cấu hình riêng cho lần chạy. Hai CLI chỉ được gọi `via_status` và `pages_connections`; không nhập token Meta, không đăng bài/video, không thay cấu hình MCP toàn cục. Báo cáo JSON ở `.runtime/native-dev/mcp-probes`; log và credential cache giữ riêng trên máy. `setup` đổi mật khẩu lần đầu của admin dev để đáp ứng kiểm tra đăng nhập bình thường.
+
+Chạy lại `setup` khi token thử hết hạn hoặc bị thu hồi: probe kiểm tra và tạo lại token trong đúng kho dev. Probe yêu cầu runtime dev đang giữ lock, tránh gửi thông tin đăng nhập vào tunnel Codespaces khác đang chiếm cổng 8020. Nếu khóa/cache không còn khớp, công cụ dừng để bảo toàn dữ liệu.
 
 ## Dữ liệu kiểm thử
 
