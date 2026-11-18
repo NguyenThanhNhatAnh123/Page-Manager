@@ -7,6 +7,7 @@ from datetime import timedelta
 import hashlib
 import hmac
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -87,7 +88,13 @@ class Registry:
             await self._sync(workspace,requested_at)
     async def _sync(self,workspace,requested_at):
         owner=workspace.owner
-        with central() as db:db.execute("UPDATE public.pm_sync_requests SET status='running',started_at=now(),message=NULL WHERE user_id=%s",(owner,))
+        with central() as db:
+            claimed=db.execute("""UPDATE public.pm_sync_requests SET status='running',started_at=now(),message=NULL
+                WHERE user_id=%s AND requested_at=%s AND status='pending'
+                AND requested_at>COALESCE(processed_at,'epoch'::timestamptz)
+                AND EXISTS(SELECT 1 FROM public.pm_users WHERE id=%s AND active) RETURNING 1""",
+                (owner,requested_at,owner)).fetchone()
+        if not claimed:return
         try:
             async with workspace.sync_lock:
                 connections=workspace.manager.connections(limit=100)['items']
@@ -100,7 +107,11 @@ class Registry:
                             with suppress(AppError):await workspace.manager.sync(connection['id'])
                 result=await workspace.analytics.refresh()
             with central() as db:db.execute("UPDATE public.pm_sync_requests SET processed_at=%s,finished_at=now(),next_auto_at=now()+%s*interval '1 hour',status='completed',refreshed=%s,unavailable=%s,message=%s WHERE user_id=%s",(requested_at,interval_hours(),result['refreshed'],result['unavailable'],'Một số chỉ số chưa đọc được; giữ số liệu gần nhất.' if result['unavailable'] or result.get('unavailable_pages') else None,owner))
-        except asyncio.CancelledError:raise
+        except asyncio.CancelledError:
+            # A temporarily disabled owner can resume this durable request.
+            with suppress(Exception):
+                with central() as db:db.execute("UPDATE public.pm_sync_requests SET status='pending',started_at=NULL WHERE user_id=%s AND requested_at=%s AND status='running'",(owner,requested_at))
+            raise
         except Exception:
             with central() as db:db.execute("UPDATE public.pm_sync_requests SET processed_at=%s,finished_at=now(),next_auto_at=now()+%s*interval '1 hour',status='error',message='Chưa đồng bộ được. Kiểm tra kết nối và thử lại.' WHERE user_id=%s",(requested_at,interval_hours(),owner))
     async def run(self):
@@ -120,18 +131,23 @@ class Registry:
                     if owner not in active:
                         task=self.sync_tasks.pop(owner,None)
                         if task:task.cancel()
-                        await self.workspaces.pop(owner).scheduler.shutdown()
+                        try:await self.workspaces.pop(owner).scheduler.shutdown()
+                        except Exception as error:logging.getLogger(__name__).warning('Workspace %s cleanup failed (%s)',owner,type(error).__name__)
+                ready={}
                 for user in users:
-                    workspace=self.get(user['id']);workspace.scheduler.tick()
+                    try:
+                        workspace=self.get(user['id']);workspace.scheduler.tick();ready[user['id']]=workspace
+                    except Exception as error:logging.getLogger(__name__).warning('Workspace %s tick failed (%s)',user['id'],type(error).__name__)
                     await asyncio.sleep(0)
                 if time.monotonic()>=self.next_auto_check:
                     self.next_auto_check=time.monotonic()+60
-                    enqueue_due(central,{owner:workspace for owner,workspace in self.workspaces.items() if owner in active})
+                    enqueue_due(central,ready)
                 for request in pending:
                     owner=request['user_id'];task=self.sync_tasks.get(owner)
+                    if owner not in ready:continue
                     if task is None or task.done():
                         if task is not None and not task.cancelled():task.exception()
-                        self.sync_tasks[owner]=asyncio.create_task(self.sync(self.get(owner),request['requested_at']))
+                        self.sync_tasks[owner]=asyncio.create_task(self.sync(ready[owner],request['requested_at']))
                 self.last_tick=time.monotonic();self.error=False
             except Exception:self.error=True
             await asyncio.sleep(2)

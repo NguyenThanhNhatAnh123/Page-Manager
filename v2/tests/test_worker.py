@@ -760,3 +760,96 @@ async def test_full_sync_refreshes_followers_and_retains_last_value_on_failure(r
         latest=manager.page('555')['page']
         assert latest['details']['followers_count']==870 and latest['details']['followers_observed_at']==observed
     finally:manager.graph_factory=original
+
+
+async def test_sync_claim_rejects_duplicate_and_stale_request(runtime,monkeypatch):
+    from worker import app as module
+    registry,_,owners=runtime;workspace=registry.get(owners[16]);owner=workspace.owner;reads=[]
+    monkeypatch.setenv('PM_ANALYTICS_SYNC_HOURS','12')
+    monkeypatch.setattr(workspace.manager,'connections',lambda **_: {'items':[]})
+    async def refresh():
+        reads.append(owner);await asyncio.sleep(0)
+        return {'refreshed':1,'unavailable':0}
+    monkeypatch.setattr(workspace.analytics,'refresh',refresh)
+    with module.central() as db:
+        db.execute('DELETE FROM pm_sync_requests WHERE user_id=%s',(owner,))
+        assert db.execute("SELECT pm_request_sync(%s,'manual',12) queued",(owner,)).fetchone()['queued']
+        requested=db.execute('SELECT requested_at FROM pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()['requested_at']
+    await asyncio.gather(registry._sync(workspace,requested),registry._sync(workspace,requested))
+    await registry._sync(workspace,requested)
+    assert reads==[owner]
+    with module.central() as db:
+        row=db.execute('SELECT * FROM pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()
+        assert row['status']=='completed' and row['processed_at']==requested
+        assert 43100<(row['next_auto_at']-row['finished_at']).total_seconds()<43300
+        db.execute("UPDATE pm_sync_requests SET finished_at=now()-interval '61 seconds' WHERE user_id=%s",(owner,))
+        assert db.execute("SELECT pm_request_sync(%s,'manual',12) queued",(owner,)).fetchone()['queued']
+        current=db.execute('SELECT requested_at FROM pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()['requested_at']
+    await registry._sync(workspace,requested)
+    assert reads==[owner]
+    await registry._sync(workspace,current)
+    assert reads==[owner,owner]
+
+
+def test_automatic_sync_skips_broken_workspace_and_preserves_other_owners(runtime):
+    from types import SimpleNamespace
+    from worker import app as module
+    from worker.sync_schedule import enqueue_due
+    registry,_,owners=runtime;bad,good=owners[14],owners[17];workspace=registry.get(good)
+    if not workspace.manager.connections()['items']:connect(workspace)
+    class BrokenStore:
+        def connect(self):raise RuntimeError('Synthetic isolated workspace failure')
+    broken=SimpleNamespace(manager=SimpleNamespace(store=BrokenStore()))
+    with module.central() as db:db.execute('DELETE FROM pm_sync_requests WHERE user_id IN (%s,%s)',(bad,good))
+    assert enqueue_due(module.central,{bad:broken,good:workspace})==1
+    with module.central() as db:
+        assert db.execute('SELECT reason FROM pm_sync_requests WHERE user_id=%s',(good,)).fetchone()['reason']=='auto'
+        assert db.execute('SELECT 1 FROM pm_sync_requests WHERE user_id=%s',(bad,)).fetchone() is None
+
+
+async def test_registry_tick_dispatches_other_owners_after_workspace_failure(runtime,monkeypatch):
+    from types import SimpleNamespace
+    from worker import app as module
+    _,_,owners=runtime;registry=module.Registry();bad,good=owners[0],owners[18];seen=[];scanned=[]
+    with module.central() as db:
+        db.execute('DELETE FROM pm_sync_requests WHERE user_id=%s',(good,))
+        db.execute("SELECT pm_request_sync(%s,'manual',12)",(good,))
+    def get(owner):
+        if owner==bad:raise RuntimeError('Synthetic isolated workspace failure')
+        return SimpleNamespace(owner=owner,scheduler=SimpleNamespace(tick=lambda:None))
+    def enqueue(_,workspaces):
+        scanned.extend(workspaces);registry.closing=True;return 0
+    async def sync(workspace,requested):seen.append(workspace.owner)
+    monkeypatch.setattr(registry,'get',get);monkeypatch.setattr(registry,'sync',sync)
+    monkeypatch.setattr(module,'enqueue_due',enqueue)
+    await registry.run()
+    await asyncio.gather(*registry.sync_tasks.values())
+    assert good in seen and good in scanned and bad not in seen and bad not in scanned
+    assert registry.last_tick and not registry.error
+
+
+async def test_cancelled_sync_remains_pending_and_can_resume(runtime,monkeypatch):
+    from worker import app as module
+    registry,_,owners=runtime;workspace=registry.get(owners[10]);owner=workspace.owner;started=asyncio.Event()
+    monkeypatch.setattr(workspace.manager,'connections',lambda **_: {'items':[]})
+    async def wait():started.set();await asyncio.Event().wait()
+    monkeypatch.setattr(workspace.analytics,'refresh',wait)
+    with module.central() as db:
+        db.execute('DELETE FROM pm_sync_requests WHERE user_id=%s',(owner,))
+        db.execute("SELECT pm_request_sync(%s,'manual',12)",(owner,))
+        requested=db.execute('SELECT requested_at FROM pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()['requested_at']
+    task=asyncio.create_task(registry._sync(workspace,requested))
+    try:
+        await asyncio.wait_for(started.wait(),5);task.cancel()
+        with pytest.raises(asyncio.CancelledError):await task
+    finally:
+        if not task.done():task.cancel()
+        await asyncio.gather(task,return_exceptions=True)
+    with module.central() as db:
+        row=db.execute('SELECT status,started_at FROM pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()
+        assert row['status']=='pending' and row['started_at'] is None
+    async def finish():return {'refreshed':0,'unavailable':0}
+    monkeypatch.setattr(workspace.analytics,'refresh',finish)
+    await registry._sync(workspace,requested)
+    with module.central() as db:
+        assert db.execute('SELECT status FROM pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()['status']=='completed'
