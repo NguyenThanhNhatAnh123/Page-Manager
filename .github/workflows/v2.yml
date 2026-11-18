@@ -42,9 +42,14 @@ jobs:
           cache-dependency-path: v2/frontend/package-lock.json
       - name: Install pinned Python dependencies
         run: |
-          python -m pip install -r requirements-lock.txt
+          python -m venv .runtime/ci-venv
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python -m pip check
+          $ciPython = Join-Path (Get-Location) '.runtime/ci-venv/Scripts/python.exe'
+          & $ciPython -m pip install -r requirements-lock.txt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $ciPython -m pip check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          (Join-Path (Get-Location) '.runtime/ci-venv/Scripts') | Out-File -LiteralPath $env:GITHUB_PATH -Encoding utf8 -Append
           exit $LASTEXITCODE
       - name: Build and test frontend
         working-directory: v2/frontend
