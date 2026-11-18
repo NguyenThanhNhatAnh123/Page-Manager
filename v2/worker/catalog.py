@@ -4,11 +4,16 @@ from page_manager.store import ACTIVE_PAGE_LINK
 from page_manager.reel_calendar import validate_calendar,local_date_key
 
 
-def ranked_pages(workspace,limit,offset,search='',connection_id=None,removed=False,sort='views_desc',status=''):
+def ranked_pages(workspace,limit,offset,search='',connection_id=None,removed=False,sort='views_desc',status='',information_status=''):
     if sort not in ('views_desc','followers_desc','name'):
         raise AppError('Cách sắp xếp Page không hợp lệ.','invalid_sort',422)
     # Rank before pagination. Never fetch only one alphabetical window and sort it.
     where=['p.removed_at IS '+('NOT NULL' if removed else 'NULL')];args=[]
+    if information_status not in ('','updated','not_updated'):
+        raise AppError('Bộ lọc thay đổi thông tin Page không hợp lệ.','invalid_information_status',422)
+    if information_status:
+        changed=workspace.manager.store._information_changed_sql('p')
+        where.append(changed if information_status=='updated' else 'NOT '+changed)
     if search.strip():
         where.append('(instr(casefold(p.name),?)>0 OR instr(p.id,?)>0)')
         args.extend((search.strip().casefold(),)*2)

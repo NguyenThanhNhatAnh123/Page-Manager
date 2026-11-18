@@ -68,7 +68,13 @@ import {
 import "@fontsource-variable/inter/wght.css";
 import "./styles.css";
 import "./reference-theme.css";
-import { Dropdown, MonthPicker } from "./controls";
+import {
+  Dropdown,
+  MonthPicker,
+  DatePicker,
+  addDays,
+  formatDay,
+} from "./controls";
 import "./catalog-theme.css";
 
 const queryClient = new QueryClient({
@@ -441,6 +447,7 @@ function ReelHistory({
           <strong>{reel.caption || reel.video_id}</strong>
           <small>{reel.page_name}</small>
         </div>
+        <ReelOpenLink reel={reel} />
       </div>
       <div className="toolbar">
         <select
@@ -558,6 +565,41 @@ function viewTier(views: number | null) {
           ? "10k–50k"
           : "Dưới 10k";
 }
+function reelLink(r: Reel): string | null {
+  for (const candidate of [r.permalink_url, r.content_url]) {
+    if (!candidate) continue;
+    try {
+      const url = new URL(candidate);
+      if ((url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password &&
+          (url.hostname === "facebook.com" || url.hostname.endsWith(".facebook.com") || url.hostname === "fb.watch"))
+        return url.toString();
+    } catch {
+      // Ignore malformed values and try the next candidate.
+    }
+  }
+  return null;
+}
+function ReelOpenLink({ reel, compact = false }: { reel: Reel; compact?: boolean }) {
+  const href = reelLink(reel);
+  if (!href)
+    return (
+      <span className="reel-link-missing" title="Meta chưa cung cấp liên kết hợp lệ cho nội dung này">
+        Chưa có liên kết
+      </span>
+    );
+  return (
+    <a
+      className={`reel-open-link ${compact ? "compact" : "button"}`}
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Mở bài viết ${reel.caption || reel.video_id} trong tab mới`}
+    >
+      Mở bài viết
+      <ArrowUpRight size={13} />
+    </a>
+  );
+}
 function ReelTable({ items, user }: { items: Reel[]; user: User }) {
   const [selected, setSelected] = useState<Reel>();
   return (
@@ -570,6 +612,7 @@ function ReelTable({ items, user }: { items: Reel[]; user: User }) {
               <th className="numeric">Lượt xem</th>
               <th className="numeric">Bình luận</th>
               <th className="numeric">Chia sẻ</th>
+              <th>Bài viết</th>
               <th>Số liệu</th>
             </tr>
           </thead>
@@ -587,18 +630,7 @@ function ReelTable({ items, user }: { items: Reel[]; user: User }) {
                       <Play size={14} />
                     </span>
                     <div>
-                      {r.permalink_url ? (
-                        <a
-                          href={r.permalink_url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {r.caption || `Video ${r.video_id}`}
-                          <ArrowUpRight size={12} />
-                        </a>
-                      ) : (
-                        <span>{r.caption || `Video ${r.video_id}`}</span>
-                      )}
+                      <span>{r.caption || `Video ${r.video_id}`}</span>
                       <small>
                         {r.page_name}
                         {r.published_at ? ` · ${date(r.published_at)}` : ""}
@@ -619,6 +651,9 @@ function ReelTable({ items, user }: { items: Reel[]; user: User }) {
                 </td>
                 <td className="numeric" title={date(r.shares_observed_at)}>
                   {number(r.shares)}
+                </td>
+                <td>
+                  <ReelOpenLink reel={r} compact />
                 </td>
                 <td>
                   <div
@@ -1029,7 +1064,13 @@ function Connections({ user }: { user: User }) {
     [confirm, setConfirm] = useState<Connection>(),
     [removing, setRemoving] = useState<Connection>(),
     [error, setError] = useState<unknown>(),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [pending, setPending] = useState<{
+      id: number;
+      kind: "check" | "sync";
+    }>();
+  // Synchronous guard: two clicks inside one render must not both dispatch.
+  const inFlight = useRef(false);
   const query = useData<{ items: Connection[]; total: number }>(
     user,
     `/api/connections?limit=25&offset=${offset}&search=${encodeURIComponent(search)}`,
@@ -1039,9 +1080,12 @@ function Connections({ user }: { user: User }) {
     path: string,
     value: unknown = {},
     method: "POST" | "DELETE" = "POST",
+    target?: { id: number; kind: "check" | "sync" },
   ) {
-    if (busy) return;
+    if (busy || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
+    setPending(target);
     setError(undefined);
     try {
       await api(path, { method, body: JSON.stringify(value) });
@@ -1052,9 +1096,21 @@ function Connections({ user }: { user: User }) {
     } catch (e) {
       setError(e);
     } finally {
+      inFlight.current = false;
+      setPending(undefined);
       setBusy(false);
     }
   }
+  const runCheck = (c: Connection) =>
+    action(`/api/connections/${c.id}/check`, {}, "POST", {
+      id: c.id,
+      kind: "check",
+    });
+  const runSync = (c: Connection) =>
+    action(`/api/connections/${c.id}/sync`, {}, "POST", {
+      id: c.id,
+      kind: "sync",
+    });
   return (
     <>
       <div className="toolbar">
@@ -1121,18 +1177,57 @@ function Connections({ user }: { user: User }) {
                       )}
                     </td>
                     <td className="connection-checked">{date(c.checked_at)}</td>
-                    <td>
-                      <button
-                        className="icon-button connection-menu"
-                        aria-label={`Thao tác với ${c.label}`}
-                        title="Thao tác System User / Token"
-                        onClick={() => {
-                          setError(undefined);
-                          setActions(c);
-                        }}
-                      >
-                        <MoreHorizontal size={17} />
-                      </button>
+                    <td className="connection-actions-cell">
+                      <div className="connection-row-actions">
+                        <button
+                          type="button"
+                          className="connection-pill"
+                          disabled={busy || !c.connected}
+                          aria-busy={
+                            pending?.id === c.id && pending.kind === "check"
+                          }
+                          aria-label={`Kiểm tra ${c.label}`}
+                          title="Xác nhận quyền và trạng thái kết nối"
+                          onClick={() => runCheck(c)}
+                        >
+                          {pending?.id === c.id && pending.kind === "check" ? (
+                            <LoaderCircle size={14} className="spin" />
+                          ) : (
+                            <ShieldCheck size={14} />
+                          )}
+                          Kiểm tra
+                        </button>
+                        <button
+                          type="button"
+                          className="connection-pill"
+                          disabled={busy || !c.connected}
+                          aria-busy={
+                            pending?.id === c.id && pending.kind === "sync"
+                          }
+                          aria-label={`Đồng bộ Page của ${c.label}`}
+                          title="Lấy lại danh sách Page từ System User"
+                          onClick={() => runSync(c)}
+                        >
+                          {pending?.id === c.id && pending.kind === "sync" ? (
+                            <LoaderCircle size={14} className="spin" />
+                          ) : (
+                            <RefreshCw size={14} />
+                          )}
+                          Đồng bộ Page
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button connection-menu"
+                          aria-label={`Thao tác khác với ${c.label}`}
+                          title="Chỉnh sửa, ngắt kết nối hoặc xóa token"
+                          onClick={() => {
+                            setError(undefined);
+                            setActions(c);
+                          }}
+                        >
+                          <MoreHorizontal size={17} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1168,28 +1263,6 @@ function Connections({ user }: { user: User }) {
           onClose={() => !busy && setActions(undefined)}
         >
           <div className="connection-action-list">
-            <button
-              disabled={busy || !actions.connected}
-              onClick={() => action(`/api/connections/${actions.id}/check`)}
-            >
-              <ShieldCheck size={18} />
-              <span>
-                Kiểm tra token
-                <small>Xác nhận quyền và trạng thái kết nối</small>
-              </span>
-              <ChevronRight size={15} />
-            </button>
-            <button
-              disabled={busy || !actions.connected}
-              onClick={() => action(`/api/connections/${actions.id}/sync`)}
-            >
-              <RefreshCw size={18} />
-              <span>
-                Đồng bộ Pages
-                <small>Lấy lại danh sách Page từ System User</small>
-              </span>
-              <ChevronRight size={15} />
-            </button>
             <button
               disabled={busy}
               onClick={() => {
@@ -1447,6 +1520,24 @@ function ConnectionForm({
   );
 }
 
+const infoStatusOptions = [
+  { value: "", label: "Tất cả thông tin" },
+  { value: "updated", label: "Đã đổi thông tin" },
+  { value: "not_updated", label: "Chưa đổi thông tin" },
+];
+function InfoStatusBadge({ status }: { status: string }) {
+  const updated = status === "updated";
+  return (
+    <span
+      className={`info-status ${updated ? "updated" : "not-updated"}`}
+      title="Nhãn quản lý nội bộ, không thay đổi thông tin trên Facebook"
+    >
+      {updated ? <Check size={12} /> : <Clock size={12} />}
+      {updated ? "Đã đổi thông tin" : "Chưa đổi thông tin"}
+    </span>
+  );
+}
+
 function PageCard({
   page,
   onSelect,
@@ -1519,6 +1610,9 @@ function PageCard({
           </small>
         </span>
       </div>
+      <div className="page-card-info">
+        <InfoStatusBadge status={page.information_status} />
+      </div>
       <dl className="page-card-metrics">
         {metrics.map((metric) => (
           <div key={metric.label} title={metric.detail}>
@@ -1581,6 +1675,7 @@ function Pages({ user }: { user: User }) {
     [pageSize, setPageSize] = useState(12),
     [sourceId, setSourceId] = useState(""),
     [sort, setSort] = useState("views_desc"),
+    [infoStatus, setInfoStatus] = useState(""),
     [removed, setRemoved] = useState(false),
     [selected, setSelected] = useState<Page>(),
     [error, setError] = useState<unknown>(),
@@ -1607,7 +1702,7 @@ function Pages({ user }: { user: User }) {
   });
   const query = useData<{ items: Page[]; total: number }>(
     user,
-    `/api/pages?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(search)}&removed=${removed}&sort=${sort}${sourceId ? `&connection_id=${sourceId}` : ""}`,
+    `/api/pages?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(search)}&removed=${removed}&sort=${sort}${sourceId ? `&connection_id=${sourceId}` : ""}${infoStatus ? `&information_status=${infoStatus}` : ""}`,
   );
   const selectedSource = sources.data?.find(
     (source) => String(source.id) === sourceId,
@@ -1673,6 +1768,16 @@ function Pages({ user }: { user: User }) {
               { value: "followers_desc", label: "Follower giảm dần" },
               { value: "name", label: "Tên Page A–Z" },
             ]}
+          />
+          <Dropdown
+            label="Lọc theo thông tin Page"
+            value={infoStatus}
+            onChange={(value) => {
+              setInfoStatus(value);
+              setOffset(0);
+              setSelected(undefined);
+            }}
+            options={infoStatusOptions}
           />
           <Dropdown
             label="Số Page mỗi trang"
@@ -1759,7 +1864,9 @@ function Pages({ user }: { user: User }) {
           title={
             search
               ? "Không tìm thấy Page"
-              : sourceId
+              : infoStatus
+                ? "Không có Page phù hợp trạng thái thông tin"
+                : sourceId
                 ? "System User này chưa có Page phù hợp"
                 : removed
                   ? "Chưa có Page đã gỡ"
@@ -1768,7 +1875,9 @@ function Pages({ user }: { user: User }) {
           description={
             search
               ? "Thử tìm bằng tên hoặc ID Page khác."
-              : sourceId
+              : infoStatus
+                ? "Chọn trạng thái thông tin khác hoặc bỏ lọc."
+                : sourceId
                 ? "Thử chọn nguồn khác hoặc bỏ lọc nguồn."
                 : removed
                   ? "Các Page đã gỡ có thể được khôi phục tại đây."
@@ -1800,16 +1909,21 @@ function Pages({ user }: { user: User }) {
               {selected.connections.map((c) => c.label).join(", ") ||
                 "Chưa có nguồn"}
             </dd>
+            <dt>Thông tin Page</dt>
+            <dd>
+              <InfoStatusBadge status={selected.information_status} />
+            </dd>
             <dt>Tình trạng đăng</dt>
             <dd>
               {selected.can_publish
                 ? "Sẵn sàng"
-                : "Chưa xác nhận chuẩn bị Page"}
+                : selected.posting_block_reason || "Chưa sẵn sàng đăng"}
             </dd>
           </dl>
           <p className="hint">
-            Xác nhận đã chuẩn bị khi bạn đã kiểm tra thông tin Page. Đây là
-            trạng thái quản lý nội bộ, không thay đổi thông tin trên Facebook.
+            Đánh dấu “Đã đổi thông tin” khi bạn đã cập nhật thông tin Page. Đây
+            là nhãn quản lý nội bộ, chỉ lưu trong PageManager và không thay đổi
+            thông tin trên Facebook.
           </p>
           {error != null && <ErrorBox error={error} />}
           <div className="modal-footer wrap">
@@ -1823,17 +1937,19 @@ function Pages({ user }: { user: User }) {
               <button
                 className="primary"
                 disabled={busy}
+                aria-busy={busy}
                 onClick={() =>
                   update(selected, {
-                    information_status: selected.can_publish
-                      ? "not_updated"
-                      : "updated",
+                    information_status:
+                      selected.information_status === "updated"
+                        ? "not_updated"
+                        : "updated",
                   })
                 }
               >
-                {selected.can_publish
-                  ? "Tạm khóa đăng"
-                  : "Xác nhận đã chuẩn bị"}
+                {selected.information_status === "updated"
+                  ? "Đánh dấu chưa đổi thông tin"
+                  : "Đánh dấu đã đổi thông tin"}
               </button>
             )}
           </div>
@@ -2148,14 +2264,15 @@ function Calendar({ user }: { user: User }) {
   const today = localDate(new Date(), user.timezone).slice(0, 10);
   const [source, setSource] = useState<CalendarGroup>(),
     [groupOffset, setGroupOffset] = useState(0),
-    [mode, setMode] = useState<"list" | "week" | "month">("list"),
+    [mode, setMode] = useState<"list" | "day" | "week" | "month">("list"),
     [week, setWeek] = useState(0),
     [month, setMonth] = useState(() => today.slice(0, 7)),
+    [day, setDay] = useState(today),
     [status, setStatus] = useState("all"),
     [search, setSearch] = useState(""),
     [offset, setOffset] = useState(0),
-    [dayFilter, setDayFilter] = useState(""),
     [selected, setSelected] = useState<Job>();
+  const dayMode = mode === "day";
   const limit = 12;
   const keyOf = (day: Date) =>
     `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
@@ -2169,7 +2286,10 @@ function Calendar({ user }: { user: User }) {
     day.setDate(day.getDate() + index);
     return day;
   });
-  const groupPath = `/api/reels/groups?limit=12&offset=${groupOffset}&calendar=${month}&status=${status}&search=${encodeURIComponent(search)}`;
+  // Root groups and selected-source jobs share the same calendar scope:
+  // the chosen ISO day in day mode, otherwise the chosen month.
+  const calendarScope = dayMode ? day : month;
+  const groupPath = `/api/reels/groups?limit=12&offset=${groupOffset}&calendar=${calendarScope}&status=${status}&search=${encodeURIComponent(search)}`;
   const groups = useQuery<{ items: CalendarGroup[]; total: number }>({
     queryKey: [user.id, groupPath],
     queryFn: ({ signal }) => api(groupPath, { signal }),
@@ -2179,7 +2299,7 @@ function Calendar({ user }: { user: User }) {
   const period =
     mode === "week"
       ? `date_from=${keyOf(days[0])}&date_to=${keyOf(days[6])}`
-      : `calendar=${dayFilter || month}`;
+      : `calendar=${calendarScope}`;
   const jobPath = `/api/reels?limit=${limit}&offset=${offset}&${period}&status=${status}&sort=scheduled_asc&connection_id=${source?.id || 0}`;
   const jobs = useQuery<{ jobs: Job[]; total: number }>({
     queryKey: [user.id, jobPath],
@@ -2189,16 +2309,39 @@ function Calendar({ user }: { user: User }) {
   });
   function changeMonth(value: string) {
     setMonth(value);
+    const lastDay = new Date(Number(value.slice(0, 4)), Number(value.slice(5)), 0, 12).getDate();
+    setDay(`${value}-${String(Math.min(Number(day.slice(8)), lastDay)).padStart(2, "0")}`);
     setOffset(0);
     setGroupOffset(0);
     setWeek(0);
-    setDayFilter("");
   }
   function shift(amount: number) {
-    const day = new Date(month + "-01T12:00:00");
-    day.setMonth(day.getMonth() + amount);
-    changeMonth(keyOf(day).slice(0, 7));
+    const next = new Date(month + "-01T12:00:00");
+    next.setMonth(next.getMonth() + amount);
+    changeMonth(keyOf(next).slice(0, 7));
   }
+  function changeDay(value: string) {
+    setDay(value);
+    setMonth(value.slice(0, 7));
+    setWeek(0);
+    setOffset(0);
+    setGroupOffset(0);
+  }
+  function changeMode(value: typeof mode) {
+    setMode(value);
+    setOffset(0);
+    setGroupOffset(0);
+  }
+  function openDay(value: string) {
+    changeDay(value);
+    changeMode("day");
+  }
+  const modeLabels = {
+    list: "Danh sách",
+    day: "Ngày",
+    week: "Tuần",
+    month: "Tháng",
+  } as const;
   return (
     <>
       {source && (
@@ -2208,7 +2351,8 @@ function Calendar({ user }: { user: User }) {
             onClick={() => {
               setSource(undefined);
               setOffset(0);
-              setDayFilter("");
+              setGroupOffset(0);
+              if (mode !== "day") setMode("list");
             }}
           >
             <ChevronLeft size={15} />
@@ -2219,23 +2363,51 @@ function Calendar({ user }: { user: User }) {
         </div>
       )}
       <div className="toolbar calendar-toolbar">
-        <div className="date-switcher">
-          <button
-            className="icon-button"
-            aria-label="Tháng trước"
-            onClick={() => shift(-1)}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <MonthPicker value={month} today={today} onChange={changeMonth} />
-          <button
-            className="icon-button"
-            aria-label="Tháng sau"
-            onClick={() => shift(1)}
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
+        {dayMode ? (
+          <div className="date-switcher day-switcher">
+            <button
+              className="icon-button"
+              aria-label="Ngày trước"
+              onClick={() => changeDay(addDays(day, -1))}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <DatePicker value={day} today={today} onChange={changeDay} />
+            <button
+              className="icon-button"
+              aria-label="Ngày sau"
+              onClick={() => changeDay(addDays(day, 1))}
+            >
+              <ChevronRight size={16} />
+            </button>
+            <button
+              className="subtle today-button"
+              aria-pressed={day === today}
+              disabled={day === today}
+              onClick={() => changeDay(today)}
+            >
+              Hôm nay
+            </button>
+          </div>
+        ) : (
+          <div className="date-switcher">
+            <button
+              className="icon-button"
+              aria-label="Tháng trước"
+              onClick={() => shift(-1)}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <MonthPicker value={month} today={today} onChange={changeMonth} />
+            <button
+              className="icon-button"
+              aria-label="Tháng sau"
+              onClick={() => shift(1)}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
         <div className="toolbar-actions">
           {source && mode === "week" && (
             <Dropdown
@@ -2267,26 +2439,39 @@ function Calendar({ user }: { user: User }) {
               { value: "cancelled", label: "Đã hủy" },
             ]}
           />
-          {source && (
-            <div className="segmented">
-              {(["list", "week", "month"] as const).map((value) => (
+          {source ? (
+            <div className="segmented" role="group" aria-label="Chế độ xem lịch">
+              {(["list", "day", "week", "month"] as const).map((value) => (
                 <button
                   key={value}
                   aria-pressed={mode === value}
                   className={mode === value ? "selected" : ""}
-                  onClick={() => {
-                    setMode(value);
-                    setOffset(0);
-                    setDayFilter("");
-                  }}
+                  onClick={() => changeMode(value)}
                 >
-                  {value === "list"
-                    ? "Danh sách"
-                    : value === "week"
-                      ? "Tuần"
-                      : "Tháng"}
+                  {modeLabels[value]}
                 </button>
               ))}
+            </div>
+          ) : (
+            <div
+              className="segmented"
+              role="group"
+              aria-label="Phạm vi thống kê System User"
+            >
+              <button
+                aria-pressed={!dayMode}
+                className={!dayMode ? "selected" : ""}
+                onClick={() => changeMode("list")}
+              >
+                Theo tháng
+              </button>
+              <button
+                aria-pressed={dayMode}
+                className={dayMode ? "selected" : ""}
+                onClick={() => changeMode("day")}
+              >
+                Theo ngày
+              </button>
             </div>
           )}
         </div>
@@ -2296,7 +2481,11 @@ function Calendar({ user }: { user: User }) {
           <div className="calendar-intro">
             <div>
               <h3>Lịch theo System User</h3>
-              <p>Chọn một nguồn để xem lịch của các Page bên trong.</p>
+              <p>
+                {dayMode
+                  ? `Số lịch ngày ${day.split("-").reverse().join("/")}. Chọn một nguồn để xem lịch trong ngày.`
+                  : "Chọn một nguồn để xem lịch của các Page bên trong."}
+              </p>
             </div>
             <SearchBox
               value={search}
@@ -2322,8 +2511,7 @@ function Calendar({ user }: { user: User }) {
                       onClick={() => {
                         setSource(group);
                         setOffset(0);
-                        setMode("list");
-                        setDayFilter("");
+                        if (!dayMode) setMode("list");
                       }}
                     >
                       <div className="system-card-heading">
@@ -2343,7 +2531,9 @@ function Calendar({ user }: { user: User }) {
                       </div>
                       <div className="system-card-total">
                         <strong>{number(group.job_count)}</strong>
-                        <span>lịch trong tháng</span>
+                        <span>
+                          {dayMode ? "lịch trong ngày" : "lịch trong tháng"}
+                        </span>
                         <small>
                           {number(group.scheduled_pages)} Page có lịch
                         </small>
@@ -2397,19 +2587,10 @@ function Calendar({ user }: { user: User }) {
               <KeyRound size={15} />
               {source.identity_name || source.label}
             </span>
-            <small>12 lịch / trang · Giờ theo múi giờ của từng lịch</small>
-            {dayFilter && (
-              <button
-                className="subtle"
-                onClick={() => {
-                  setDayFilter("");
-                  setOffset(0);
-                }}
-              >
-                {dayFilter}
-                <X size={13} />
-              </button>
-            )}
+            <small>
+              {dayMode ? `${formatDay(day)} · ` : ""}12 lịch / trang · Giờ theo
+              múi giờ của từng lịch
+            </small>
           </div>
           {jobs.isPending ? (
             <Loading />
@@ -2417,7 +2598,42 @@ function Calendar({ user }: { user: User }) {
             <ErrorBox error={jobs.error} retry={() => jobs.refetch()} />
           ) : (
             <>
-              {mode === "list" ? (
+              {mode === "day" ? (
+                jobs.data.jobs.length ? (
+                  <ol className="calendar-dayview" aria-label={`Lịch ${formatDay(day)}`}>
+                    {jobs.data.jobs.map((job) => (
+                      <li key={job.id}>
+                        <button
+                          className={`dayview-item ${["needs_review", "needs_user"].includes(job.status) ? "attention" : ""}`}
+                          onClick={() => setSelected(job)}
+                          aria-label={`Chi tiết lịch ${job.id}: ${job.page_name} lúc ${job.scheduled_local.slice(11, 16)}`}
+                        >
+                          <span className="dayview-time">
+                            <strong>{job.scheduled_local.slice(11, 16)}</strong>
+                            <small>{job.timezone}</small>
+                          </span>
+                          <span className="dayview-body">
+                            <strong>{job.page_name}</strong>
+                            <small title={job.asset_name}>
+                              {job.caption || job.asset_name}
+                            </small>
+                          </span>
+                          <span className="dayview-status">
+                            <Badge status={job.status} />
+                            <ChevronRight size={16} />
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <Empty
+                    icon={CalendarDays}
+                    title="Không có lịch trong ngày này"
+                    description="Chọn ngày hoặc trạng thái khác để xem lịch của System User này."
+                  />
+                )
+              ) : mode === "list" ? (
                 jobs.data.jobs.length ? (
                   <div className="calendar-list table-scroll">
                     <table>
@@ -2508,7 +2724,14 @@ function Calendar({ user }: { user: User }) {
                           key={key}
                           className={`calendar-day ${key.slice(0, 7) !== month ? "outside" : ""} ${key === today ? "today" : ""}`}
                         >
-                          <span>{day.getDate()}</span>
+                          <button
+                            type="button"
+                            className="calendar-day-number"
+                            aria-label={`Xem lịch ngày ${formatDay(key)}`}
+                            onClick={() => openDay(key)}
+                          >
+                            {day.getDate()}
+                          </button>
                           {items.slice(0, 3).map((job) => (
                             <button
                               className={`calendar-job ${["needs_review", "needs_user"].includes(job.status) ? "attention" : ""}`}
@@ -2527,11 +2750,7 @@ function Calendar({ user }: { user: User }) {
                           {items.length > 3 && (
                             <button
                               className="calendar-more"
-                              onClick={() => {
-                                setDayFilter(key);
-                                setMode("list");
-                                setOffset(0);
-                              }}
+                              onClick={() => openDay(key)}
                             >
                               Xem lịch ngày này
                               <ChevronRight size={12} />
@@ -3241,9 +3460,12 @@ function Settings({ user, onUser }: { user: User; onUser: (u: User) => void }) {
   );
 }
 
+// Internal role value stays "owner" for API compatibility; it is displayed as Seller.
+const roleLabel = (role: string) =>
+  role === "admin" ? "Quản trị viên" : "Seller";
 const roleOptions = [
-  { value: "owner", label: "Chủ kho" },
-  { value: "admin", label: "Quản trị viên" },
+  { value: "owner", label: roleLabel("owner") },
+  { value: "admin", label: roleLabel("admin") },
 ];
 
 function UsersView({ user }: { user: User }) {
@@ -3310,7 +3532,7 @@ function UsersView({ user }: { user: User }) {
                         {self && " · Tài khoản của bạn"}
                       </small>
                     </td>
-                    <td>{u.role === "admin" ? "Quản trị viên" : "Chủ kho"}</td>
+                    <td>{roleLabel(u.role)}</td>
                     <td>
                       <Badge status={u.active ? "active" : "disconnected"} />
                       {u.must_change && <small>Cần đổi mật khẩu ban đầu</small>}
@@ -4285,7 +4507,7 @@ function App() {
             <div>
               {user.username}
               <small>
-                {user.role === "admin" ? "Quản trị viên" : "Chủ kho"}
+                {roleLabel(user.role)}
               </small>
             </div>
             <button

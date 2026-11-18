@@ -1,4 +1,4 @@
-# Quy trình PageManager do chủ kho yêu cầu
+# Quy trình PageManager do seller yêu cầu
 
 Video tôi giao cho agent để đăng là yêu cầu đăng công khai lên Page đã chỉ định. Khi đã có video, Page và nguồn System User, gửi lệnh qua MCP PageManager luôn: không có giờ hẹn thì đăng ngay, có giờ hẹn thì đặt lịch. Dùng caption đã giao/đã thống nhất; nếu không có thì được để trống. Không hỏi xác nhận lại và không chuyển sang duyệt Telegram.
 

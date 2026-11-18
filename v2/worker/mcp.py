@@ -39,7 +39,7 @@ def install(app,workspace_for,create_reel,reel_action):
         'via_status':('Tình trạng kho PageManager cá nhân.',{}),
         'pages_overview':('Thống kê Page đã lưu trong kho cá nhân.',{'timezone':{'type':'string','maxLength':100}}),
         'pages_connections':('Danh sách kết nối, không trả token Meta.',{'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0},'search':{'type':'string','maxLength':200},'connected_only':{'type':'boolean'}}),
-        'pages_list':('Danh sách Page thuộc kho cá nhân.',{'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0},'search':{'type':'string','maxLength':200},'connection_id':{'type':['integer','null'],'minimum':1},'status':{'type':'string','enum':['','active','needs_attention','disconnected']},'timezone':{'type':'string','maxLength':100}}),
+        'pages_list':('Danh sách Page thuộc kho cá nhân.',{'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0},'search':{'type':'string','maxLength':200},'connection_id':{'type':['integer','null'],'minimum':1},'status':{'type':'string','enum':['','active','needs_attention','disconnected']},'information_status':{'type':'string','enum':['','updated','not_updated']},'timezone':{'type':'string','maxLength':100}}),
         'pages_events':('Nhật ký PageManager cá nhân.',{'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0}}),
         'pages_reels_assets':('Danh sách video an toàn; không trả đường dẫn file.',{'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0}}),
         'pages_reels_config':('Trạng thái bộ lập lịch Reel.',{}),
@@ -56,16 +56,16 @@ def install(app,workspace_for,create_reel,reel_action):
         'pages_reel_cancel':('Hủy các bước tiếp theo của lịch Reel; giữ tiến độ đã gửi.',{'job_id':{'type':'integer','minimum':1}}),
         'pages_reel_verify':('Chỉ đọc xác minh video đã ghi nhận; không đăng lại.',{'job_id':{'type':'integer','minimum':1}}),
         'pages_analytics_sync':('Yêu cầu đồng bộ chỉ số cho kho cá nhân.',{}),
-        'pages_connection_create':('Lưu token System User được chủ kho cung cấp; chỉ trả metadata, không trả lại token.',ConnectionInput),
+        'pages_connection_create':('Lưu token System User được seller cung cấp; chỉ trả metadata, không trả lại token.',ConnectionInput),
         'pages_connection_update':('Đổi tên, thông tin hoặc token System User với revision hiện tại.',UpdateConnection),
         'pages_connection_check':('Kiểm tra nguồn kết nối được chọn trong kho cá nhân.',ConnectionRef),
         'pages_connection_sync':('Đồng bộ danh sách Page qua nguồn System User được chọn.',ConnectionRef),
         'pages_connection_disconnect':('Ngắt kết nối nguồn trong kho cá nhân bằng revision hiện tại.',DisconnectConnection),
         'pages_manage':('Đánh dấu chuẩn bị, gỡ hoặc khôi phục Page trong kho cá nhân.',ManagePage),
         'pages_refresh':('Đọc lại thông tin Page và bài đăng từ Meta.',RefreshPage),
-        'pages_edit':('Sửa các trường thông tin Page được chủ kho cho phép; request_id cố định.',EditPage),
-        'pages_reel_create':('Tạo lịch Reel trực tiếp từ video chủ kho đã giao; không duyệt Telegram hoặc hỏi lại. Dùng cùng request_id để chống trùng.',None),
-        'pages_reel_now':('Đăng ngay Reel công khai từ video chủ kho đã giao; không duyệt Telegram, không hỏi xác nhận lại. Dùng request_id cố định.',ImmediateReel),
+        'pages_edit':('Sửa các trường thông tin Page được seller cho phép; request_id cố định.',EditPage),
+        'pages_reel_create':('Tạo lịch Reel trực tiếp từ video seller đã giao; không duyệt Telegram hoặc hỏi lại. Dùng cùng request_id để chống trùng.',None),
+        'pages_reel_now':('Đăng ngay Reel công khai từ video seller đã giao; không duyệt Telegram, không hỏi xác nhận lại. Dùng request_id cố định.',ImmediateReel),
         'pages_reel_amend':('Sửa caption hoặc thời gian của lịch chưa gửi bước nào tới Meta.',AmendJob),
         'pages_reel_resume':('Tiếp tục lịch khi trạng thái máy chủ cho phép; giữ chặn đăng trùng.',{'job_id':{'type':'integer','minimum':1}}),
     }
@@ -122,7 +122,7 @@ def install(app,workspace_for,create_reel,reel_action):
                 if name=='via_status':data={'available':True,'stats':manager.overview()['stats'],'publication_policy':publication_policy()}
                 elif name=='pages_overview':data=manager.overview(timezone=zone)
                 elif name=='pages_connections':data=manager.connections(limit,offset,search,connected_only=args.get('connected_only',False))
-                elif name=='pages_list':data=manager.pages(limit=limit,offset=offset,search=search,timezone=zone,status=args.get('status',''),connection_id=args.get('connection_id'),connection_active_only=True)
+                elif name=='pages_list':data=manager.pages(limit=limit,offset=offset,search=search,timezone=zone,status=args.get('status',''),information_status=args.get('information_status',''),connection_id=args.get('connection_id'),connection_active_only=True)
                 elif name=='pages_events':data={'items':store.events(limit,offset),'total':store.event_count()}
                 elif name=='pages_reels_config':
                     from page_manager.reel_assets import MAX_VIDEO_BYTES

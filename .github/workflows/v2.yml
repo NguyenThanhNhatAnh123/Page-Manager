@@ -41,7 +41,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: {toolchain: '1.90.0'}
       - run: pip install -r requirements.txt
-      - run: python -m pytest tests/test_worker.py tests/test_server.py tests/test_windows_native.py -q
+      - run: python -m pytest tests/test_worker.py tests/test_server.py tests/test_windows_native.py tests/test_transfer_windows.py -q
       - run: cargo build --locked --manifest-path gateway/Cargo.toml
       - run: npm ci && npm test && npm run build
         working-directory: v2/frontend

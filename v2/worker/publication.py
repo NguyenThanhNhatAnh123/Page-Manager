@@ -29,8 +29,8 @@ def ensure_meta_writes_allowed():
 
 AGENT_INSTRUCTIONS = (
     'Mỗi MCP token chỉ truy cập kho của chủ token; không trả token Meta. '
-    'Chủ kho đã chọn đăng trực tiếp, không duyệt Telegram. '
-    'Khi chủ kho giao video để đăng và đã rõ Page cùng nguồn System User, '
+    'Seller đã chọn đăng trực tiếp, không duyệt Telegram. '
+    'Khi seller giao video để đăng và đã rõ Page cùng nguồn System User, '
     'gọi pages_reel_now ngay nếu không có giờ hẹn; nếu có giờ hẹn, dùng pages_reel_schedule. '
     'Dùng caption đã giao hoặc đã thống nhất; nếu không có thì được để trống. '
     'không hỏi xác nhận lại và không tạo yêu cầu duyệt. '

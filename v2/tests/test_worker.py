@@ -647,6 +647,12 @@ async def test_calendar_system_groups_and_local_week_bounds_stay_scoped(runtime,
         assert attention['total']==1 and attention['items'][0]['completed']==1
         weekly=(await client.get(f'/api/reels?connection_id={groups[0]}&date_from=2099-10-26&date_to=2099-11-01',headers=headers)).json()
         assert weekly['total']==1 and weekly['jobs'][0]['id']==ids[0]
+        day=(await client.get('/api/reels/groups?calendar=2099-10-31&search=Calendar%20fixture',headers=headers)).json()
+        assert sum(g['job_count'] for g in day['items'])==1
+        day_jobs=(await client.get(f'/api/reels?connection_id={groups[0]}&calendar=2099-10-31',headers=headers)).json()
+        assert day_jobs['total']==1 and day_jobs['jobs'][0]['id']==ids[0]
+        assert sum(g['job_count'] for g in (await client.get('/api/reels/groups?calendar=2099-11-01&search=Calendar%20fixture',headers=headers)).json()['items'])==0
+        assert (await client.get('/api/reels/groups?calendar=2099-02-30',headers=headers)).status_code==422
         foreign={**headers,'x-pm-workspace':owners[19]}
         assert (await client.get('/api/reels/groups?search=Calendar%20fixture',headers=foreign)).json()['total']==0
         assert (await client.get('/api/reels/groups?calendar=2099-99',headers=headers)).status_code==422
@@ -853,3 +859,50 @@ async def test_cancelled_sync_remains_pending_and_can_resume(runtime,monkeypatch
     await registry._sync(workspace,requested)
     with module.central() as db:
         assert db.execute('SELECT status FROM pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()['status']=='completed'
+
+
+@pytest.mark.parametrize('row,expected',[
+    ({'permalink_url':'https://www.facebook.com/reel/123','video_id':'123'},'https://www.facebook.com/reel/123'),
+    ({'video_id':'123','page_id':'456','origin':'manager'},'https://www.facebook.com/reel/123'),
+    ({'video_id':'123','page_id':'456','origin':'page_video'},'https://www.facebook.com/456/videos/123/'),
+    ({'permalink_url':'javascript:alert(1)','video_id':'bad'},None),
+    ({'permalink_url':'https://facebook.com.evil.test/video','video_id':'bad'},None),
+])
+def test_content_links_prefer_meta_and_never_use_untrusted_hosts(row,expected):
+    from worker.analytics import content_url
+    assert content_url(row)==expected
+
+
+async def test_new_pages_default_not_updated_and_filter_before_pagination(runtime,monkeypatch):
+    from worker import app as module
+    from page_manager.inputs import ConnectionInput
+    registry,app,owners=runtime;monkeypatch.setattr(module,'registry',registry)
+    workspace=registry.get(owners[13]);manager=workspace.manager
+    body=ConnectionInput(label='Information fixture',token_type='system_user',token='FakeInformationToken')
+    cid=manager.save_connection(body)['id']
+    pages=[{'id':str(991130+i),'name':'Information fixture '+str(i),'sources':['assigned_pages'],'tasks':['ANALYZE']} for i in range(3)]
+    def sync(source):
+        manager.store.sync(source,manager.store.connection(source)['token_revision'],pages,True,'working',None,{'id':'777'})
+    sync(cid)
+    assert all(manager.page(p['id'])['page']['information_status']=='not_updated' for p in pages)
+    low=manager.page('991132')['page'];manager.manage_page(low['id'],low['management_revision'],information_status='updated')
+    second=manager.save_connection(body.model_copy(update={'label':'Information fixture second'}))['id'];sync(second)
+    assert manager.page('991132')['page']['information_status']=='updated'
+    stamp='2026-11-17T08:00:00+00:00'
+    for i,p in enumerate(pages):
+        vid=str(991150+i);workspace.analytics.register(vid,p['id'],cid)
+        with manager.store.connect() as db:
+            db.execute('INSERT INTO reel_metric_snapshots(video_id,observed_at,views,comments,shares,view_metric,api_version,status) VALUES(?,?,?,?,?,?,?,?)',
+                       (vid,stamp,1000-i*500,0,None,'fb_reels_total_plays','v26.0','partial'))
+    headers={'x-pm-internal':os.environ['PM_INTERNAL_KEY'],'x-pm-workspace':workspace.owner}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
+        result=(await client.get('/api/pages',params={'connection_id':cid,'information_status':'updated','limit':1},headers=headers)).json()
+        assert result['total']==1 and result['items'][0]['id']=='991132'
+        for offset in (0,1):
+            result=(await client.get('/api/pages',params={'connection_id':cid,'information_status':'not_updated','limit':1,'offset':offset},headers=headers)).json()
+            assert result['total']==2 and result['items'][0]['id']==str(991130+offset)
+        rpc=await client.post('/mcp',headers=headers,json={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'pages_list','arguments':{'connection_id':cid,'information_status':'not_updated'}}})
+        assert json.loads(rpc.json()['result']['content'][0]['text'])['total']==2
+        assert (await client.get('/api/pages?information_status=bad',headers=headers)).status_code==422
+        foreign={**headers,'x-pm-workspace':owners[14]}
+        assert (await client.get('/api/pages?search=Information%20fixture&information_status=not_updated',headers=foreign)).json()['total']==0

@@ -9,7 +9,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIXES = ['v2/worker', 'v2/scripts', 'v2/migrations', 'v2/server/windows', 'meta-page-manager/backend']
-FILES = ['v2/requirements.txt', 'meta-page-manager/requirements.txt', 'CHECK-SERVER-WINDOWS.bat', 'v2/server/manager.py']
+FILES = ['v2/requirements.txt', 'meta-page-manager/requirements.txt', 'CHECK-SERVER-WINDOWS.bat', 'v2/server/manager.py', 'AGENTS.md', 'SERVER-HANDOFF.md']
 
 
 def package(gateway, output):

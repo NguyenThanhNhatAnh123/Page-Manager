@@ -99,29 +99,30 @@ def setup():
         print(json.dumps(report))
 
 
-def probe_client(kind):
-    data = load_cache()
+def probe_client(kind, *, credentials=None, work=None, base=BASE, emit=True):
+    data = credentials if credentials is not None else load_cache()
+    work = Path(work) if work is not None else WORK
     child_env = dict(os.environ)
     child_env['PAGEMANAGER_V2_MCP_TOKEN'] = data['mcp_token']
     child_env['PYTHONUTF8'] = '1'
     task = ('Test only the pagemanager_v2 MCP server. Call via_status and pages_connections '
             '(limit=5), once each. Do not call other tools, run commands, or publish anything. '
             'Return a short JSON summary based on the two real MCP responses. Never print credentials.')
-    directory = WORK / kind
+    directory = work / kind
     directory.mkdir(exist_ok=True)
     private(directory)
     if kind == 'codex':
         executable = Path(os.environ['APPDATA']) / 'npm/node_modules/@openai/codex/bin/codex.js'
         args = [shutil.which('node'), str(executable), 'exec', '--ignore-user-config',
                 '--skip-git-repo-check', '--sandbox', 'read-only', '--json',
-                '-c', 'mcp_servers.pagemanager_v2.url="' + BASE + '/mcp"',
+                '-c', 'mcp_servers.pagemanager_v2.url="' + base + '/mcp"',
                 '-c', 'mcp_servers.pagemanager_v2.bearer_token_env_var="PAGEMANAGER_V2_MCP_TOKEN"',
                 '-c', 'mcp_servers.pagemanager_v2.enabled_tools=["via_status","pages_connections"]',
                 '-c', 'mcp_servers.pagemanager_v2.default_tools_approval_mode="approve"', task]
     else:
         config = directory / 'mcp.json'
         config.write_text(json.dumps({'mcpServers': {'pagemanager_v2': {
-            'type': 'http', 'url': BASE + '/mcp',
+            'type': 'http', 'url': base + '/mcp',
             'headers': {'Authorization': 'Bearer ${PAGEMANAGER_V2_MCP_TOKEN}'}}}}), encoding='utf-8')
         args = [str(Path.home() / '.local/bin/claude.exe'), '-p', task, '--restricted',
                 '--tools', '', '--strict-mcp-config', '--mcp-config', str(config),
@@ -158,10 +159,11 @@ def probe_client(kind):
                     completed.add(uses[content['tool_use_id']])
     report = {'client': kind, 'exit_code': process.returncode, 'completed_mcp_tools': sorted(completed),
               'passed': process.returncode == 0 and EXPECTED <= completed}
-    (WORK / (kind + '-report.json')).write_text(json.dumps(report, indent=2), encoding='utf-8')
-    print(json.dumps(report))
+    (work / (kind + '-report.json')).write_text(json.dumps(report, indent=2), encoding='utf-8')
+    if emit:print(json.dumps(report))
     if not report['passed']:
         raise SystemExit(2)
+    return report
 
 
 if __name__ == '__main__':

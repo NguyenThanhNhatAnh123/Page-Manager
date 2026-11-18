@@ -276,10 +276,15 @@ class Store:
             FROM pages p) """
         return sql,[start,end,start,end,start]
 
+    @staticmethod
+    def _information_changed_sql(alias):
+        if alias not in ('p','s'):raise ValueError('Invalid Page SQL alias')
+        history=f"(EXISTS(SELECT 1 FROM page_edits ie WHERE ie.page_id={alias}.id AND ie.outcome='accepted') OR EXISTS(SELECT 1 FROM chrome_page_setup_receipts ce WHERE ce.page_id={alias}.id))"
+        return f"(CASE WHEN {alias}.information_status_override IS NULL THEN {history} ELSE {alias}.information_status_override='updated' END)"
+
     def catalog_window(self,start,end,*,connection_id=None,connection_active_only=False,search='',status='',information_status='',today='',page_id=None,page_ids=None,limit=None,offset=0,posting_eligible_only=False,removed=False):
         prefix,params=self._page_summary(start,end);conditions=[]
-        history="(EXISTS(SELECT 1 FROM page_edits ie WHERE ie.page_id=s.id AND ie.outcome='accepted') OR EXISTS(SELECT 1 FROM chrome_page_setup_receipts ce WHERE ce.page_id=s.id))"
-        changed="(CASE WHEN s.information_status_override IS NULL THEN "+history+" ELSE s.information_status_override='updated' END)"
+        changed=self._information_changed_sql('s')
         revision="(CASE WHEN s.removed_at IS NULL AND "+changed+" THEN (SELECT COUNT(*) FROM page_edits ie WHERE ie.page_id=s.id AND ie.outcome='accepted')+(SELECT COUNT(*) FROM chrome_page_setup_receipts ce WHERE ce.page_id=s.id)+s.management_revision-1 ELSE 0 END)"
         if removed is not None:conditions.append('s.removed_at IS '+('NOT NULL' if removed else 'NULL'))
         if information_status not in ('','updated','not_updated'):

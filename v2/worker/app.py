@@ -262,9 +262,9 @@ async def delete_connection(request:Request,cid:int,body:Revision):
 
 
 @app.get('/api/pages')
-async def pages(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200),status:str='',connection_id:int|None=None,removed:bool=False,sort:str='views_desc'):
+async def pages(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200),status:str='',connection_id:int|None=None,removed:bool=False,sort:str='views_desc',information_status:str=''):
     workspace=ws(request)
-    return ranked_pages(workspace,limit,offset,search,connection_id,removed,sort,status)
+    return ranked_pages(workspace,limit,offset,search,connection_id,removed,sort,status,information_status)
 
 
 @app.get('/api/pages/{pid}')

@@ -1,0 +1,72 @@
+{
+  "date": "2026-11-17",
+  "timezone": "America/Los_Angeles",
+  "checked_at": "2026-11-18T07:58:54.568801+00:00",
+  "mode": "native-windows-dev",
+  "accounts": 20,
+  "display_role": "Seller",
+  "compatible_stored_role": "owner",
+  "password_reset": {
+    "accounts": 20,
+    "password_as_requested": true,
+    "normal_password_change_completed": 20,
+    "unique_salted_hashes": 20,
+    "must_change_remaining": 0,
+    "previous_sessions_and_mcp_revoked": true
+  },
+  "mcp": {
+    "protocol_accounts_passed": 20,
+    "codex_cli_accounts_passed": 20,
+    "claude_cli_accounts_passed": 20,
+    "full_scope_personal_tokens": 20,
+    "token_days": 30,
+    "read_write_scope_transitions_checked": true,
+    "cross_account_metadata_access_denied": true,
+    "cross_account_token_mutation_denied": true,
+    "revoked_token_denied": true,
+    "meta_publication_blocked": true,
+    "idempotent_read_reconnects": 4
+  },
+  "features": {
+    "new_pages_default_not_updated": true,
+    "existing_page_status_preserved_across_tokens": true,
+    "information_filter_before_server_pagination": true,
+    "calendar_day_groups_and_jobs_share_local_date": true,
+    "invalid_dates_rejected": true,
+    "content_links_meta_first_with_safe_fallback": true
+  },
+  "local_checks": {
+    "worker_server_native_tests": 71,
+    "transfer_boundary_tests": 7,
+    "legacy_page_information_and_graph_tests": 90,
+    "gateway_tests": 7,
+    "frontend_tests": 6,
+    "frontend_build": true
+  },
+  "encrypted_transfer_restore": {
+    "restored_accounts": 20,
+    "mcp_accounts_passed": 20,
+    "master_key_preserved": true,
+    "password_hashes_and_onboarding_preserved": true,
+    "history_signature_identical": true,
+    "completed_reels": 32,
+    "media_hashes_verified": 32,
+    "video_range_stream_verified": true,
+    "session_cookies_cleared": true,
+    "meta_network_disabled_during_verification": true,
+    "publication_disabled": true
+  },
+  "cloudflare_observed": {
+    "domain": "eagleglobal2027.com",
+    "universal_ssl_active": true,
+    "dns_records": 0,
+    "ssl_mode": "Full",
+    "https_redirect": true,
+    "minimum_tls": "1.2",
+    "tls13": true,
+    "cache_rules_active": 0,
+    "configuration_changed": false,
+    "server_network_setup_deferred_as_requested": true
+  },
+  "privacy": "Credentials, names, identifiers, data dumps, media, screenshots and the transfer key are retained privately and excluded from Git."
+}

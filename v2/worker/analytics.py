@@ -32,6 +32,16 @@ def social_counts(value):
     return get(('comments','comment','COMMENT','comment_count')),get(('shares','share','SHARE','share_count'))
 
 
+def content_url(row):
+    from page_manager.service import url
+    if link:=url(row.get('permalink_url'),True):return link
+    video=row.get('video_id');page=row.get('page_id')
+    if not isinstance(video,str) or not ID.fullmatch(video):return None
+    if row.get('origin')=='manager':return 'https://www.facebook.com/reel/'+video
+    if isinstance(page,str) and ID.fullmatch(page):return f'https://www.facebook.com/{page}/videos/{video}/'
+    return None
+
+
 class Analytics:
     def __init__(self,manager,network_slots):
         self.manager=manager;self.store=manager.store;self.network_slots=network_slots
@@ -212,4 +222,4 @@ class Analytics:
             totals=dict(db.execute(cte+'''SELECT COUNT(*) AS tracked,COUNT(s.views) AS views_known,COUNT(s.comments) AS comments_known,
                 COUNT(s.shares) AS shares_known,SUM(s.views) AS views,SUM(s.comments) AS comments,SUM(s.shares) AS shares'''+prefix+' WHERE p.removed_at IS NULL').fetchone())
             discovery=[dict(row) for row in db.execute('SELECT * FROM reel_discovery')]
-        return {'items':rows,'total':total,'limit':limit,'offset':offset,'totals':totals,'bands':bucket_counts,'sort':sort,'band':band,'discovery':discovery,'view_definition':'Lượt phát gồm phát lại · Tổng tích lũy','coverage_note':'Giữ số liệu đọc được gần nhất; trạng thái cho biết kết quả lần đọc mới. Video có sẵn được phát hiện từng nhóm 50/Page mỗi lượt; không phải video nào cũng có chỉ số Reel.'}
+        return {'items':[{**row,'content_url':content_url(row)} for row in rows],'total':total,'limit':limit,'offset':offset,'totals':totals,'bands':bucket_counts,'sort':sort,'band':band,'discovery':discovery,'view_definition':'Lượt phát gồm phát lại · Tổng tích lũy','coverage_note':'Giữ số liệu đọc được gần nhất; trạng thái cho biết kết quả lần đọc mới. Video có sẵn được phát hiện từng nhóm 50/Page mỗi lượt; không phải video nào cũng có chỉ số Reel.'}

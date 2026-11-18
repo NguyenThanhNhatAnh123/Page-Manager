@@ -1,5 +1,9 @@
 # PageManager v2
 
+Seller là tên hiển thị mới của vai trò `owner`. Page có nhãn/bộ lọc Đã đổi thông tin hoặc Chưa đổi thông tin; Page mới đồng bộ mặc định chưa đổi, bổ sung token không xóa trạng thái Page đã có. Lịch đăng hỗ trợ chọn ngày và xem Ngày cùng phân trang. Thống kê và nội dung gần đây có Mở bài viết, ưu tiên permalink Meta và đường dẫn Facebook an toàn theo ID khi cần.
+
+Đã kiểm tra MCP trên 20 tài khoản thật của môi trường local bằng giao thức và cả Codex/Claude CLI: mỗi CLI 20/20. Người dùng yêu cầu đổi toàn bộ mật khẩu; bước đổi lần đầu đã hoàn tất và tạo lại personal MCP token theo từng kho. Báo cáo không chứa bí mật ở [kiểm tra 20 tài khoản và restore](qa/seller-mcp-20-and-transfer.json). Gói dữ liệu thật chỉ được xuất mã hóa ra ngoài Git; xem [bàn giao server](../SERVER-HANDOFF.md).
+
 Rust gateway + Python Meta worker + React/TypeScript frontend. Mỗi tài khoản có một namespace PostgreSQL, khóa mã hóa token dẫn xuất riêng và thư mục video riêng. Tối đa **20 tài khoản tổng cộng**, mặc định gồm `admin` và `user02` đến `user20`. Admin cũng có kho nghiệp vụ riêng.
 
 Server Windows 11 có thể chạy trực tiếp, không cần Ubuntu/Hyper-V/WSL/Docker: xem [bộ native Windows](server/windows/README.md). Domain dự kiến **eagleglobal2027.com**. Máy hiện tại chỉ dev/test, không đăng ký service server hoặc đổi DNS. CI Windows build Rust/MSVC và kiểm tra worker, 20 kho, gateway, task SYSTEM và bundle; việc chạy trên máy bật Smart App Control vẫn phụ thuộc độ tin cậy/chữ ký của executable và thư viện Python.
@@ -14,7 +18,7 @@ Kho admin đã được sao chép theo yêu cầu từ Codespaces sang dev local
 
 - Giữ lõi Python `PageManager`, `TokenReelAssets`, `TokenReelScheduler`, revision token, UUID chống trùng và checkpoint trước mỗi lệnh Meta.
 - FE mới: sáng/tối, Tổng quan, Pages, Thư viện, Lịch tháng/tuần/danh sách, soạn và xem lại Reel, đăng ngay, đặt lịch, sửa lịch chưa chạy, hủy/tiếp tục/xác minh, thống kê, hoạt động, tài khoản và MCP.
-- Token System User được mã hóa bằng Fernet với khóa riêng dẫn xuất từ khóa máy chủ + UUID chủ kho. Không trả lại token Meta cho trình duyệt hoặc MCP.
+- Token System User được mã hóa bằng Fernet với khóa riêng dẫn xuất từ khóa máy chủ + UUID seller. Không trả lại token Meta cho trình duyệt hoặc MCP.
 - Đăng nhập thành công ghi yêu cầu đồng bộ bền vững vào `pm_sync_requests`. Worker chỉ đồng bộ kho của người đó; hợp nhất yêu cầu đang chờ/chạy và giới hạn yêu cầu đăng nhập/thủ công trong 60 giây sau lần hoàn tất. Đăng xuất không hủy lịch đã lưu.
 - Đồng bộ nền **12 giờ/lần**, độc lập với phiên web 30 ngày và không cần đăng nhập lại. Chỉ quét kho đang hoạt động có token kết nối; tối đa hai kho đồng bộ cùng lúc. `PM_ANALYTICS_SYNC_HOURS=24` đổi sang 24 giờ. Hàng đợi và lần chạy tiếp theo nằm trong PostgreSQL; worker phục hồi lượt chưa xong sau khi khởi động lại. Máy và ứng dụng phải đang chạy.
 - Nút **Đồng bộ ngay** ở Tổng quan, Page và Thống kê dùng cùng hàng đợi. Mỗi lượt cập nhật danh sách Page, thông tin Page (gồm follower), phát hiện video và lấy view/comment/share. Meta không trả chỉ số nào thì giữ số không-null gần nhất; không suy diễn số thiếu thành 0. Phiên web dài hơn không gia hạn token Meta; token lỗi cần được cập nhật riêng.
@@ -23,13 +27,13 @@ Kho admin đã được sao chép theo yêu cầu từ Codespaces sang dev local
 - Nội dung đã đăng qua công cụ được theo dõi theo đúng `video_id`. API danh sách video của Page được đọc theo nhóm 50, giữ cursor để tiếp tục các lượt sau. Video không có bộ chỉ số Reel vẫn có thể xuất hiện với chỉ số thiếu; UI nêu rõ độ đầy đủ.
 - Một worker duy nhất giữ PostgreSQL advisory lock, kiểm tra lease mỗi vòng. Mất lease dừng scheduler và giữ checkpoint. Tối đa 4 tác vụ đăng toàn hệ thống, 2 lịch đang xử lý trong mỗi kho.
 - Pipeline idea/producer/Podsach/audio/Chrome không được khởi động trong v2.
-- V2 đăng trực tiếp, không tạo hoặc chờ duyệt Telegram. Khi chủ kho giao video để đăng và đã rõ Page/nguồn, agent gọi lệnh luôn, không hỏi xác nhận lại: không có giờ hẹn thì đăng ngay, có giờ hẹn thì đặt lịch; caption dùng nội dung đã giao/đã thống nhất hoặc để trống. API/MCP không kế thừa mặc định duyệt của lõi cũ. Scheduler v2 giữ nguyên kiểm tra Page/token/file, checkpoint và cơ chế chống đăng trùng.
+- V2 đăng trực tiếp, không tạo hoặc chờ duyệt Telegram. Khi seller giao video để đăng và đã rõ Page/nguồn, agent gọi lệnh luôn, không hỏi xác nhận lại: không có giờ hẹn thì đăng ngay, có giờ hẹn thì đặt lịch; caption dùng nội dung đã giao/đã thống nhất hoặc để trống. API/MCP không kế thừa mặc định duyệt của lõi cũ. Scheduler v2 giữ nguyên kiểm tra Page/token/file, checkpoint và cơ chế chống đăng trùng.
 
 ## Tách kho nhiều người dùng
 
-Gateway lấy UUID chủ kho từ session hoặc personal MCP token đã xác thực, rồi tự tạo header nội bộ gửi sang worker. Header/query/đối số do máy khách gửi không chọn được kho khác. Vai trò `admin` quản lý tài khoản; các API nghiệp vụ và MCP của admin vẫn dùng kho riêng của chính admin.
+Gateway lấy UUID seller từ session hoặc personal MCP token đã xác thực, rồi tự tạo header nội bộ gửi sang worker. Header/query/đối số do máy khách gửi không chọn được kho khác. Vai trò `admin` quản lý tài khoản; các API nghiệp vụ và MCP của admin vẫn dùng kho riêng của chính admin.
 
-Mỗi UUID có schema `w_<UUID>`, thư mục video, khóa mã hóa token dẫn xuất, avatar cache và bộ lập lịch riêng. Page ID, connection ID, job ID hoặc request UUID giống nhau ở hai kho vẫn được giải quyết độc lập. Chống trùng video theo hash chỉ tìm trong kho đang xác thực. Số liệu, lịch sử đo, nhật ký và yêu cầu đồng bộ đăng nhập đều gắn với chủ kho.
+Mỗi UUID có schema `w_<UUID>`, thư mục video, khóa mã hóa token dẫn xuất, avatar cache và bộ lập lịch riêng. Page ID, connection ID, job ID hoặc request UUID giống nhau ở hai kho vẫn được giải quyết độc lập. Chống trùng video theo hash chỉ tìm trong kho đang xác thực. Số liệu, lịch sử đo, nhật ký và yêu cầu đồng bộ đăng nhập đều gắn với seller.
 
 FE xóa cache và đóng nội dung đang soạn khi phiên thay đổi ở tab khác. Phản hồi API/upload thuộc phiên cũ bị bỏ qua, kể cả lỗi 401 đến muộn. Một profile trình duyệt dùng chung cookie giữa các tab; dùng profile riêng nếu cần đồng thời nhiều tài khoản. Thông báo giữa tab chỉ lưu nonce ngẫu nhiên, không lưu token hoặc dữ liệu kho.
 
@@ -57,7 +61,7 @@ Cần Python 3.12+, Node.js 22+, Rust 1.90+ và linker MSVC/Windows SDK, Postgre
 1. Sao chép `.env.example` thành `.env`, cấu hình `DATABASE_URL` và hai khóa độc lập. Có thể tạo khóa bằng Python `secrets.token_hex(32)` và `cryptography.fernet.Fernet.generate_key()`; không đưa khóa vào source hoặc chat.
 2. Tạo database/user PostgreSQL riêng rồi chạy `powershell -File .\setup.ps1`. Launcher portable PostgreSQL là tùy chọn `-Portable` khi đã có binary chính thức dưới `.tools/postgres/pgsql` và hệ điều hành cho phép khởi tạo thư mục dữ liệu.
 3. Chạy `powershell -File .\start.ps1 -Build`, hoặc dùng `../START-V2.bat` sau khi build.
-4. Mở `http://127.0.0.1:8020`. Thông tin ban đầu được ghi vào `.runtime/initial-users.txt` với ACL riêng. Đổi mật khẩu lần đầu; sau khi giao thông tin cho đúng chủ kho, xóa bản mật khẩu ban đầu.
+4. Mở `http://127.0.0.1:8020`. Thông tin ban đầu được ghi vào `.runtime/initial-users.txt` với ACL riêng. Đổi mật khẩu lần đầu; sau khi giao thông tin cho đúng seller, xóa bản mật khẩu ban đầu.
 
 `start.ps1` không dừng dịch vụ PageManager cũ. Không chạy hai scheduler trên cùng dữ liệu. Bản cũ tiếp tục dùng SQLite; chỉ khi truyền `database_url` và namespace thì lõi mới sử dụng PostgreSQL.
 
@@ -84,7 +88,7 @@ Giữ các tên core của connector hiện có: `via_status`, `pages_overview`,
 
 Tool tạo lịch dùng `request_id` UUID cố định: gửi lại đúng nội dung lấy lịch cũ, đổi nội dung với cùng UUID trả conflict. `via_operation_status` tra UUID trong sổ lịch mới; không nhập nhật ký MCP bên ngoài gói source này. Các tool idea/video-source/Chrome nằm ngoài phạm vi lõi được giữ và không được giả lập trong v2.
 
-Khi kết nối, MCP trả chính sách `publication_policy.mode=direct`, không duyệt Telegram và không yêu cầu xác nhận lại cho video đã được chủ kho giao đăng. Agent dùng `pages_reel_now` để đăng ngay, `pages_reel_schedule`/`pages_reel_create` để đặt lịch. Chỉ hỏi dữ liệu còn thiếu; không đoán Page khi chưa rõ. Hướng dẫn đưa vào dự án Codex/Claude ở `examples/agent-publication-instructions.md`. Sau cập nhật, kết nối lại MCP để nhận chính sách và schema mới.
+Khi kết nối, MCP trả chính sách `publication_policy.mode=direct`, không duyệt Telegram và không yêu cầu xác nhận lại cho video đã được seller giao đăng. Agent dùng `pages_reel_now` để đăng ngay, `pages_reel_schedule`/`pages_reel_create` để đặt lịch. Chỉ hỏi dữ liệu còn thiếu; không đoán Page khi chưa rõ. Hướng dẫn đưa vào dự án Codex/Claude ở `examples/agent-publication-instructions.md`. Sau cập nhật, kết nối lại MCP để nhận chính sách và schema mới.
 
 MCP đầy đủ có thêm `pages_get`, `pages_edit_options`, `pages_connection_create`, `pages_connection_update`, `pages_connection_check`, `pages_connection_sync`, `pages_connection_disconnect`, `pages_manage`, `pages_refresh`, `pages_edit`, `pages_reel_create` (alias tạo lịch), `pages_reel_now`, `pages_reel_amend`, `pages_reel_resume`, `pages_reels_upload_info`. Upload video từ máy khách dùng HTTP `POST /api/reels/assets` với cùng Bearer token, `Content-Type: application/octet-stream` và `X-Filename`; không nhận đường dẫn file tùy ý của máy chủ.
 
@@ -117,7 +121,7 @@ npm ci
 npm run build
 ```
 
-Database kiểm thử phải riêng và dùng một lần. Bộ test tạo 20 chủ kho thử nghiệm, reset các schema `w_<UUID>` của chính các tài khoản thử đó. Không dùng database thật. `tests/preview_server.py` là harness FE chỉ đọc: bắt buộc `PM_TEST_DATABASE_URL`, tắt Meta và scheduler, không được dùng làm máy chủ ứng dụng.
+Database kiểm thử phải riêng và dùng một lần. Bộ test tạo 20 seller thử nghiệm, reset các schema `w_<UUID>` của chính các tài khoản thử đó. Không dùng database thật. `tests/preview_server.py` là harness FE chỉ đọc: bắt buộc `PM_TEST_DATABASE_URL`, tắt Meta và scheduler, không được dùng làm máy chủ ứng dụng.
 
 Trên máy thực hiện thay đổi ngày 16/11/2026: FE build và 220 kiểm thử lõi cũ đạt; 23 kiểm thử worker/PostgreSQL đạt qua PGlite phát triển. Ba kiểm thử gateway đang được bỏ qua trên máy này, có workflow CI để chạy với Rust và PostgreSQL thật. Build/chạy Rust chưa được xác minh do Smart App Control chặn công cụ/build script Rust (`os error 4551`); khởi tạo PostgreSQL native gặp giới hạn quyền thư mục. Theo lựa chọn của người dùng, giữ nguyên bảo vệ Windows, không cài WSL hoặc Build Tools. PGlite không thay thế PostgreSQL production và không chứng minh tính đồng thời/lease nhiều process.
 
@@ -125,7 +129,7 @@ Lượt kiểm tra Meta ban đầu trên Windows chỉ đọc đã xác thực S
 
 `scripts/check_live_meta.py` là công cụ đọc thử riêng: nhập token qua prompt ẩn; `--cache` lưu mã hóa trong runtime riêng, `--use-cache --metrics` đọc lại và thử mẫu chỉ số. Báo cáo không chứa tên/ID/token; không ghi vào database người dùng hoặc chạy scheduler. Cache thử không thay thế thao tác thêm nguồn System User vào đúng kho sau khi v2 chạy.
 
-[CI Linux mới nhất đã đạt](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44042796773): build Rust 1.90/FE; 27 kiểm tra worker với PostgreSQL 18; 6 kiểm tra gateway thật và 6 kiểm tra FE. Gồm 20 đăng nhập đồng thời, CSRF, phân quyền kho/MCP, giả mạo chủ kho, chặn video chéo kho, thu hồi phiên/token riêng từng chủ và session 30 ngày. Bài kiểm tra session làm cũ `last_seen` 29 ngày, đăng nhập tài khoản khác để chạy cleanup, xác nhận phiên còn hợp lệ và hạn không trượt; sau đó đặt hạn đã qua và xác nhận 401. Bộ Docker triển khai cũng build và khởi chạy thành công với PostgreSQL 18 mới, health check đạt và đủ 20 tài khoản. Bảo vệ mật khẩu và giới hạn 4 phép xác thực đồng thời vẫn giữ.
+[CI Linux mới nhất đã đạt](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44042796773): build Rust 1.90/FE; 27 kiểm tra worker với PostgreSQL 18; 6 kiểm tra gateway thật và 6 kiểm tra FE. Gồm 20 đăng nhập đồng thời, CSRF, phân quyền kho/MCP, giả mạo seller, chặn video chéo kho, thu hồi phiên/token riêng từng chủ và session 30 ngày. Bài kiểm tra session làm cũ `last_seen` 29 ngày, đăng nhập tài khoản khác để chạy cleanup, xác nhận phiên còn hợp lệ và hạn không trượt; sau đó đặt hạn đã qua và xác nhận 401. Bộ Docker triển khai cũng build và khởi chạy thành công với PostgreSQL 18 mới, health check đạt và đủ 20 tài khoản. Bảo vệ mật khẩu và giới hạn 4 phép xác thực đồng thời vẫn giữ.
 
 Lượt chạy thật sau đó: Codespaces đã dựng thành công cả image môi trường và stack ứng dụng; bản sửa kho Yarn được [CI kiểm tra lại](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44018046462). Health qua `http://127.0.0.1:8020` xác nhận PostgreSQL/worker khỏe, 20 tài khoản được tạo. Codex CLI 0.163.0 và Claude CLI 2.1.326 trên Windows đều gọi MCP thật thành công. Chính sách runtime là `direct`, không duyệt Telegram hoặc xác nhận lại. Xem [báo cáo hai CLI](qa/mcp-clients-live.json), được ghi trước khi nhập Meta.
 
@@ -135,6 +139,6 @@ Khi Codespace tự dừng sau 30 phút không hoạt động, chạy `../CONNECT
 
 ## Chuyển dữ liệu và vận hành
 
-Gói source hiện tại không chứa database/token/media cũ. Dùng `scripts/migrate_workspace.py` để xem trước, rồi chuyển từng kho sau khi dừng scheduler nguồn và gán rõ chủ kho. Không tự sao chép token DPAPI sang Linux: giải mã trên đúng máy/tài khoản Windows cũ và mã hóa lại bằng khóa v2. Công cụ chuyển đổi từ chối đích có dữ liệu và lịch chưa hoàn tất còn phụ thuộc luồng duyệt ngoài v2.
+Gói source hiện tại không chứa database/token/media cũ. Dùng `scripts/migrate_workspace.py` để xem trước, rồi chuyển từng kho sau khi dừng scheduler nguồn và gán rõ seller. Không tự sao chép token DPAPI sang Linux: giải mã trên đúng máy/tài khoản Windows cũ và mã hóa lại bằng khóa v2. Công cụ chuyển đổi từ chối đích có dữ liệu và lịch chưa hoàn tất còn phụ thuộc luồng duyệt ngoài v2.
 
 Sao lưu database, toàn bộ `/data` và khóa mã hóa trước chuyển đổi; thử restore vào môi trường riêng. `GET /healthz` kiểm tra cả PostgreSQL và heartbeat worker. Số liệu phụ thuộc quyền và tốc độ cập nhật của Meta; không đảm bảo khớp tức thời với UI Facebook. Upload hiện giữ kiểm tra container/dung lượng/hash của lõi cũ, chưa có kiểm tra codec và giải mã video bằng FFmpeg. Lỗi đăng chưa rõ kết quả luôn cần xác minh, không tự gửi lại.

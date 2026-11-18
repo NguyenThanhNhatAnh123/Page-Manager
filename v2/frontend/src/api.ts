@@ -90,6 +90,7 @@ export type Reel = {
   caption: string;
   published_at: string | null;
   permalink_url: string | null;
+  content_url?: string | null;
   views: number | null;
   comments: number | null;
   shares: number | null;
