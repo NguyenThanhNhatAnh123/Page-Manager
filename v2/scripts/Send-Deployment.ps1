@@ -30,7 +30,7 @@ try {
         '-o', "UserKnownHostsFile=$knownHosts", '-o', 'ConnectTimeout=20', '-o', 'ServerAliveInterval=15')
     function Invoke-Remote([string]$Command) {
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("`$ErrorActionPreference='Stop'; " + $Command))
-        & ssh.exe @sshOptions -p $port $target powershell.exe -NoProfile -NonInteractive -EncodedCommand $encoded
+        & ssh.exe @sshOptions -p $port $target powershell.exe -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -EncodedCommand $encoded
         if ($LASTEXITCODE) { throw 'Windows remote deployment failed. Inspect the server deployment audit directory.' }
     }
     Invoke-Remote "if (!(Test-Path -LiteralPath 'C:/ProgramData/PageManager/server.env')) { throw 'Restore the server first.' }; New-Item -ItemType Directory -Path 'C:/ProgramData/PageManager/incoming' -Force | Out-Null"

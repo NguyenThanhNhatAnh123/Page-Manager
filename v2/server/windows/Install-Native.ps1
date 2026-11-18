@@ -58,7 +58,7 @@ if ($Action -eq 'Check') {
     }
     if (Test-Path -LiteralPath $CaddyExe) { try { Invoke-Checked $CaddyExe @('version') } catch { Write-Warning 'Caddy execution failed; verify source/signature and Windows policy.' } }
     if (Test-Path -LiteralPath $pythonExe) {
-        try { Invoke-Checked $pythonExe @('-c','import psycopg, cryptography.fernet, argon2; print("Python native dependencies: OK")') }
+        try { Invoke-Checked $pythonExe @('-c','import psycopg, cryptography.fernet, argon2; print(''Python native dependencies: OK'')') }
         catch { Write-Warning 'Python native dependency import failed. Check trusted wheels and Windows application-control events before installing.' }
     }
     Write-Host 'Check complete. No services, scheduled tasks, firewall or security settings were changed.'
@@ -72,7 +72,7 @@ if ($Action -eq 'Install') {
     if (!(Test-Path -LiteralPath $pythonExe) -or !$postgres -or ($Ingress -eq 'Caddy' -and !(Test-Path -LiteralPath $CaddyExe))) { throw 'Install Python dependencies, PostgreSQL service and the selected ingress prerequisites first. See README.' }
     Invoke-Checked $gatewayExe @('--version')
     if ($Ingress -eq 'Caddy') { Invoke-Checked $CaddyExe @('version') }
-    Invoke-Checked $pythonExe @('-c','import psycopg, cryptography.fernet, argon2; print("Python native dependencies: OK")')
+    Invoke-Checked $pythonExe @('-c','import psycopg, cryptography.fernet, argon2; print(''Python native dependencies: OK'')')
     if (!$PSCmdlet.ShouldProcess('Native PageManager server', 'Prepare private configuration and register automatic background startup')) { return }
     if (Test-Path -LiteralPath $StateDirectory) {
         $owner = (Get-Acl -LiteralPath $StateDirectory).GetOwner([Security.Principal.SecurityIdentifier]).Value

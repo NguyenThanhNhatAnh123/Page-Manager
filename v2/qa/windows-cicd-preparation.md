@@ -27,4 +27,8 @@ Upstream chứa blob CRLF cho `v2/scripts/migrate_workspace.py` dù `.gitattribu
 
 ## Kích hoạt sau khi review
 
+Cập nhật cùng ngày: nhánh đã được push và tạo PR #1. [CI 44275330241](https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44275330241) đạt toàn bộ Windows build, PostgreSQL 18, gateway, SYSTEM startup và ca cập nhật/failed-start rollback. Lỗi package có sẵn trên runner được sửa bằng venv riêng; fixture history được sửa để giải nén đúng kết quả reel_create. Các ghi chú “chưa push/chạy” phía trên mô tả thời điểm chuẩn bị ban đầu.
+
+Sau khi tham khảo MaZing, PodSach và LanguageCheck trên máy ADMIN, phương án mặc định được chuyển sang tải public release đã qua CI bằng outbound HTTPS/Git, không cần SSH hay self-hosted GitHub runner trên server. Tunnel office-qa đang chạy trên chính ADMIN được đối chiếu hostname và IPv6; domain đích của PageManager chỉ là eagleglobal2027.com.
+
 Hướng dẫn và toàn bộ GitHub secret/variable cần thiết ở [CI-CD.md](../server/windows/CI-CD.md). `PM_CD_ENABLED` mặc định chưa được thiết lập; chưa có thay đổi GitHub settings, SSH server, DNS hoặc quyền đăng bài. Dữ liệu thật và 32 Reel bàn giao không bị tác động trong lượt chuẩn bị.

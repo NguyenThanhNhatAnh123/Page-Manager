@@ -101,7 +101,7 @@ def update_once(state):
     if log.exists() and log.stat().st_size > 5 * 1024 * 1024:
         log.replace(log.with_suffix('.previous.log'))
     with log.open('ab') as output:
-        result = subprocess.run([str(powershell), '-NoProfile', '-NonInteractive', '-File',
+        result = subprocess.run([str(powershell), '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned', '-File',
             str(ROOT / 'server/windows/Deploy-Release.ps1'), '-Bundle', str(bundle),
             '-ExpectedCommit', release['commit'], '-ExpectedSha256', release['sha256'],
             '-StateDirectory', str(state)], stdout=output, stderr=subprocess.STDOUT)
