@@ -4,6 +4,8 @@ param(
     [string]$AppRoot = (Join-Path $PSScriptRoot '..\..'),
     [string]$StateDirectory = (Join-Path $env:ProgramData 'PageManager'),
     [string]$CaddyExe = 'C:\Program Files\Caddy\caddy.exe',
+    [ValidateSet('Caddy','Tunnel')][string]$Ingress = 'Caddy',
+    [string]$DatabaseAdminPasswordFile,
     [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$PostgresServiceName = 'postgresql-x64-18',
     [ValidateRange(1,65535)][int]$DatabasePort = 5432,
     [string]$Domain = 'eagleglobal2027.com',
@@ -67,9 +69,9 @@ if ($Action -eq 'Install') {
     $programFilesRoot = [IO.Path]::GetFullPath($env:ProgramFiles).TrimEnd('\') + '\'
     if (!$AppRoot.StartsWith($programFilesRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Extract the production bundle under Program Files before registering a SYSTEM task.' }
     if (!$bundleVerified) { throw 'Use the matching Windows bundle with manifest.json; the gateway hash/version probe could not be verified.' }
-    if (!(Test-Path -LiteralPath $pythonExe) -or !(Test-Path -LiteralPath $CaddyExe) -or !$postgres) { throw 'Install Python dependencies, PostgreSQL service and Caddy first. See README.' }
+    if (!(Test-Path -LiteralPath $pythonExe) -or !$postgres -or ($Ingress -eq 'Caddy' -and !(Test-Path -LiteralPath $CaddyExe))) { throw 'Install Python dependencies, PostgreSQL service and the selected ingress prerequisites first. See README.' }
     Invoke-Checked $gatewayExe @('--version')
-    Invoke-Checked $CaddyExe @('version')
+    if ($Ingress -eq 'Caddy') { Invoke-Checked $CaddyExe @('version') }
     Invoke-Checked $pythonExe @('-c','import psycopg, cryptography.fernet, argon2; print("Python native dependencies: OK")')
     if (!$PSCmdlet.ShouldProcess('Native PageManager server', 'Prepare private configuration and register automatic background startup')) { return }
     if (Test-Path -LiteralPath $StateDirectory) {
@@ -80,14 +82,18 @@ if ($Action -eq 'Install') {
     Invoke-Checked $pythonExe @($configScript,'init','--app-root',$AppRoot,'--state-dir',$StateDirectory,'--domain',$Domain,'--db-port',"$DatabasePort")
     Set-Service -Name $PostgresServiceName -StartupType Automatic
     Start-Service -Name $PostgresServiceName
-    Invoke-Checked $pythonExe @($configScript,'database','--state-dir',$StateDirectory)
-    Invoke-Checked $CaddyExe @('validate','--config',(Join-Path $StateDirectory 'Caddyfile'),'--adapter','caddyfile')
+    $databaseArguments = @($configScript,'database','--state-dir',$StateDirectory)
+    if ($DatabaseAdminPasswordFile) { $databaseArguments += @('--admin-password-file',$DatabaseAdminPasswordFile) }
+    Invoke-Checked $pythonExe $databaseArguments
+    if ($Ingress -eq 'Caddy') { Invoke-Checked $CaddyExe @('validate','--config',(Join-Path $StateDirectory 'Caddyfile'),'--adapter','caddyfile') }
     Register-PageManagerRuntime -PythonExe $pythonExe -RuntimeScript $runtimeScript -ConfigFile $configFile -GatewayExe $gatewayExe -StateDirectory $StateDirectory -AppRoot $AppRoot -TaskName $TaskName
-    $binaryPath = '"{0}" run --config "{1}" --adapter caddyfile' -f $CaddyExe,(Join-Path $StateDirectory 'Caddyfile')
-    $service = Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
-    if ($service -and $service.PathName -ne $binaryPath) { throw 'A different HTTPS service already uses this name; refusing to replace it.' }
-    if (!$service) { New-Service -Name $serviceName -BinaryPathName $binaryPath -DisplayName 'PageManager HTTPS' -StartupType Automatic | Out-Null }
-    Invoke-Checked 'sc.exe' @('failure',$serviceName,'reset=','86400','actions=','restart/5000/restart/15000/restart/60000')
+    if ($Ingress -eq 'Caddy') {
+        $binaryPath = '"{0}" run --config "{1}" --adapter caddyfile' -f $CaddyExe,(Join-Path $StateDirectory 'Caddyfile')
+        $service = Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
+        if ($service -and $service.PathName -ne $binaryPath) { throw 'A different HTTPS service already uses this name; refusing to replace it.' }
+        if (!$service) { New-Service -Name $serviceName -BinaryPathName $binaryPath -DisplayName 'PageManager HTTPS' -StartupType Automatic | Out-Null }
+        Invoke-Checked 'sc.exe' @('failure',$serviceName,'reset=','86400','actions=','restart/5000/restart/15000/restart/60000')
+    }
     Write-Host 'Native task/service registered. Use -Action Start after checking DNS/ports. No firewall or DNS changes were made.'
     return
 }
@@ -95,13 +101,15 @@ if ($Action -eq 'Start' -and $PSCmdlet.ShouldProcess($TaskName,'Start PageManage
     if (!(Test-Path -LiteralPath $configFile)) { throw 'Install the native server first.' }
     Start-Service -Name $PostgresServiceName
     Start-PageManagerRuntime -StateDirectory $StateDirectory -TaskName $TaskName
-    Start-Service -Name $serviceName
+    if ($Ingress -eq 'Caddy') { Start-Service -Name $serviceName }
 }
 if ($Action -eq 'Stop' -and $PSCmdlet.ShouldProcess($TaskName,'Stop native app task; preserve all data')) {
     Stop-PageManagerRuntime -StateDirectory $StateDirectory -TaskName $TaskName
 }
 if ($Action -eq 'Status' -or $Action -eq 'Start' -or $Action -eq 'Stop') {
     Get-ScheduledTask -TaskPath $taskPath -TaskName $TaskName | Select-Object TaskName,State
-    Get-Service -Name $PostgresServiceName,$serviceName | Select-Object Name,Status,StartType
+    $serviceNames = @($PostgresServiceName)
+    if ($Ingress -eq 'Caddy') { $serviceNames += $serviceName }
+    Get-Service -Name $serviceNames | Select-Object Name,Status,StartType
     try { Invoke-RestMethod 'http://127.0.0.1:8020/healthz' -TimeoutSec 10 | Format-List } catch { Write-Host 'App not healthy/reachable yet. Inspect the private logs.' }
 }

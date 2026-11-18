@@ -54,6 +54,10 @@ Caddy dùng Windows Service tự khởi động và chính sách restart khi l�
 
 ## Domain eagleglobal2027.com
 
+Nếu dùng Cloudflare Tunnel, truyền `-Ingress Tunnel` cho `Install`, `Start` và `Status`. Bộ cài bỏ yêu cầu Caddy và không đăng ký service HTTPS trong chế độ này; tunnel service riêng chuyển tiếp tới `http://127.0.0.1:8020`, Cloudflare cung cấp HTTPS bên ngoài. Giữ `PM_PUBLIC_ORIGIN=https://eagleglobal2027.com` và cookie secure. Tunnel cần chạy dưới Windows service để tồn tại sau logout/reboot; không dùng quick tunnel tạm thời.
+
+Khi cài tự động, `-DatabaseAdminPasswordFile` có thể trỏ đến file mật khẩu admin PostgreSQL trong thư mục state đã bảo vệ. Mật khẩu không đi qua đối số dòng lệnh, Git hoặc log; bỏ tham số này để nhập qua prompt ẩn như trước.
+
 Domain hiện được phân giải nameserver Cloudflare trong lượt kiểm tra ngày 17/11/2026; chưa xác nhận record A/AAAA trỏ server. Chỉ cấu hình DNS khi đã biết **IP public của server/router** và đã kiểm tra đường vào mạng.
 
 - Tạo A record **`@` → IP public server**; dùng DNS only lúc kiểm tra Caddy/TLS ban đầu. Chỉ giữ AAAA nếu IPv6 thực sự tới đúng máy chủ.

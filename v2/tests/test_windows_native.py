@@ -39,6 +39,15 @@ def test_native_init_preserves_key_and_refuses_silent_domain_change(tmp_path):
     assert path.read_bytes() == original
 
 
+def test_unattended_database_password_stays_inside_protected_state(tmp_path):
+    state = tmp_path / 'state'; state.mkdir()
+    secret = state / 'postgres-admin.txt'; secret.write_text('synthetic-local-password\n')
+    assert config.administrator_password(state / 'server.env', secret) == 'synthetic-local-password'
+    outside = tmp_path / 'outside.txt'; outside.write_text('outside')
+    with pytest.raises(ValueError, match='protected state'):
+        config.administrator_password(state / 'server.env', outside)
+
+
 def test_caddy_configuration_routes_only_to_loopback_and_keeps_state_private(tmp_path):
     text = config.caddy_configuration(tmp_path / 'private state')
     assert 'eagleglobal2027.com {' in text and 'reverse_proxy 127.0.0.1:8020' in text

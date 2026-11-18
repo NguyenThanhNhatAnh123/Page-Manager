@@ -104,13 +104,26 @@ def initialize(app_root, state_dir, domain=DOMAIN, db_port=5432, protect=protect
     return env_path
 
 
-def bootstrap_database(config_path, admin_user='postgres'):
+def administrator_password(config_path, password_file=None):
+    if password_file is None:
+        return getpass.getpass('PostgreSQL administrator password (local input only): ')
+    original = Path(password_file)
+    path = original.resolve()
+    if original.is_symlink() or path.parent != Path(config_path).resolve().parent or not path.is_file():
+        raise ValueError('Administrator password file must be inside the protected state directory')
+    value = path.read_text(encoding='utf-8-sig').strip()
+    if not value or '\n' in value or '\r' in value:
+        raise ValueError('Invalid administrator password file')
+    return value
+
+
+def bootstrap_database(config_path, admin_user='postgres', password_file=None):
     import psycopg
     from psycopg import sql
     from urllib.parse import urlsplit
     values = dotenv_values(config_path)
     parsed = urlsplit(values['DATABASE_URL'])
-    admin_password = getpass.getpass('PostgreSQL administrator password (local input only): ')
+    admin_password = administrator_password(config_path, password_file)
     with psycopg.connect(host='127.0.0.1', port=parsed.port, dbname='postgres', user=admin_user,
                         password=admin_password, autocommit=True, prepare_threshold=None) as db:
         listen = db.execute('SHOW listen_addresses').fetchone()[0]
@@ -138,6 +151,7 @@ def main():
     parser.add_argument('--state-dir', type=Path, required=True)
     parser.add_argument('--domain', default=DOMAIN)
     parser.add_argument('--db-port', type=int, default=5432)
+    parser.add_argument('--admin-password-file', type=Path)
     args = parser.parse_args()
     if os.name != 'nt' or not ctypes.windll.shell32.IsUserAnAdmin():
         parser.error('Run from an Administrator console on the Windows server.')
@@ -145,7 +159,7 @@ def main():
         initialize(args.app_root.resolve(), args.state_dir.resolve(), args.domain, args.db_port)
         print('Private native configuration prepared; existing secrets are preserved.')
     else:
-        bootstrap_database(args.state_dir.resolve() / 'server.env')
+        bootstrap_database(args.state_dir.resolve() / 'server.env', password_file=args.admin_password_file)
         print('PostgreSQL application database is ready. No Meta operations were made.')
 
 
