@@ -50,8 +50,8 @@ def running():
 
 
 def gateway_path():
-    for relative in ('gateway/target/debug/pagemanager-gateway.exe',
-                     'gateway/target/release/pagemanager-gateway.exe', 'bin/pagemanager-gateway.exe'):
+    for relative in ('bin/pagemanager-gateway.exe', 'gateway/target/release/pagemanager-gateway.exe',
+                     'gateway/target/debug/pagemanager-gateway.exe'):
         path = ROOT / relative
         if path.is_file():
             return path

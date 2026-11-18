@@ -17,7 +17,7 @@ Sau khi Python dependencies, portable PostgreSQL và Rust/FE đã build:
 
 Launcher tạo database và khóa dev riêng, giữ nguyên chúng ở các lần chạy sau. Mở **http://127.0.0.1:8020**. Cài mới có 20 người dùng trống; mật khẩu ban đầu trong `.runtime/native-dev/data/initial-users.txt`. Sau khi chạy probe, tài khoản admin dev đổi mật khẩu; thông tin hiện hành nằm trong **`.runtime/native-dev/admin-login.txt`**. Không đưa các tệp đó, `dev.env`, key, logs hay database vào Git.
 
-Rust dùng bộ portable MSVC/SDK hiện có hoặc Rust 1.90 + MSVC chính thức. Có thể build riêng bằng phần `-Build` trong `start.ps1`; launcher legacy đó dùng `.env` riêng và không phải launcher dev ở trên. Bộ dev mới không đọc token/tài khoản từ Codespaces hoặc dữ liệu cũ.
+Rust dùng bộ portable MSVC/SDK hiện có hoặc Rust 1.90 + MSVC chính thức. Launcher ưu tiên `bin/pagemanager-gateway.exe` từ bundle Windows đã xác minh, rồi `gateway/target/release`, cuối cùng mới `debug`. Dùng release để kiểm tra tải 20 tài khoản: Argon2 trong bản debug chậm hơn đáng kể và có thể làm đầy hàng chờ đăng nhập. `start.ps1` cũ dùng `.env` riêng và không phải launcher dev ở trên. Bộ dev mới không đọc token/tài khoản từ Codespaces hoặc dữ liệu cũ.
 
 ## MCP Codex / Claude CLI thật
 

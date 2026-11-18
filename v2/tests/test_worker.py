@@ -341,10 +341,14 @@ async def test_private_worker_and_mcp_are_scoped_and_secret_free(runtime,monkeyp
         assert not result.json()['result']['isError']
         denied=await client.post('/mcp',headers=headers,json={'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'pages_reel_schedule','arguments':{}}})
         assert 'error' in denied.json()
+        with psycopg.connect(os.environ['DATABASE_URL'],prepare_threshold=None) as db:
+            before=dict(db.execute('SELECT user_id,requested_at FROM pm_sync_requests').fetchall())
         refresh=await client.post('/api/analytics/sync',headers=headers)
         assert refresh.status_code==202
         with psycopg.connect(os.environ['DATABASE_URL'],prepare_threshold=None) as db:
-            assert db.execute('SELECT user_id FROM pm_sync_requests').fetchone()[0]==owners[0]
+            after=dict(db.execute('SELECT user_id,requested_at FROM pm_sync_requests').fetchall())
+            assert owners[0] in after and (owners[0] not in before or after[owners[0]]>before[owners[0]])
+            assert {owner:stamp for owner,stamp in after.items() if owner!=owners[0]}=={owner:stamp for owner,stamp in before.items() if owner!=owners[0]}
         bad=await client.post('/api/connections',headers=headers,json={'label':'x','token_type':'system_user','token':'SECRET WITH SPACES'})
         assert bad.status_code==422 and 'SECRET WITH SPACES' not in bad.text
         video=await client.post('/api/reels/assets',headers=headers|{'content-type':'application/octet-stream','x-filename':'broken.mp4'},content=b'not an mp4')
