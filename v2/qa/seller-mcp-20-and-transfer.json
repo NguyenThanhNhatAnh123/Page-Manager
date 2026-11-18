@@ -41,7 +41,25 @@
     "legacy_page_information_and_graph_tests": 90,
     "gateway_tests": 7,
     "frontend_tests": 6,
-    "frontend_build": true
+    "frontend_build": true,
+    "offline_windows_python_dependencies": true,
+    "tracked_source_secret_scan_issues": 0
+  },
+  "interface_verification": {
+    "seller_login_and_private_empty_store": true,
+    "page_information_badges_unclipped_desktop_and_mobile": true,
+    "connection_check_and_page_sync_buttons_visible_inline": true,
+    "connection_check_and_page_sync_clicked_successfully": true,
+    "calendar_day_source_grouping_and_distinct_paginated_results": true,
+    "analytics_facebook_links_open_in_new_tab": true,
+    "mobile_horizontal_document_overflow": false
+  },
+  "github_actions": {
+    "tested_code_commit": "219f969e45f8216f9d704a5665c1ccf5cda8a451",
+    "run": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44264739935",
+    "verify": "success",
+    "codespaces": "success",
+    "windows_native": "success"
   },
   "encrypted_transfer_restore": {
     "restored_accounts": 20,
