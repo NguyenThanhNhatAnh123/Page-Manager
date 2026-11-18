@@ -146,6 +146,13 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
         kernel.GetConsoleWindow.restype = ctypes.c_void_p
         if not kernel.GetConsoleWindow():
             allocated_console = bool(kernel.AllocConsole())
+            if allocated_console:
+                # A background dev/task runtime owns this console solely to send
+                # CTRL_BREAK to Uvicorn. Keep its window hidden.
+                from ctypes import wintypes
+                user32 = ctypes.WinDLL('user32', use_last_error=True)
+                user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+                user32.ShowWindow(kernel.GetConsoleWindow(), 0)
         job = WindowsJob(); children = []; relays = []
         try:
             for attempt in range(60):

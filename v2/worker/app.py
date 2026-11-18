@@ -74,11 +74,17 @@ class Registry:
     def __init__(self):
         self.workspaces={};self.sync_tasks={};self.page_locks={}
         self.publish_slots=asyncio.Semaphore(4);self.read_slots=asyncio.Semaphore(6);self.analytics_slots=asyncio.Semaphore(2)
+        self.sync_slots=asyncio.Semaphore(2)
         self.last_tick=0.;self.closing=False;self.error=False;self.lease=None
     def get(self,owner):
         if owner not in self.workspaces:self.workspaces[owner]=Workspace(owner,self)
         return self.workspaces[owner]
     async def sync(self,workspace,requested_at):
+        # Concurrent logins remain durable, while only two owner refreshes may
+        # compete with interactive requests and scheduler ticks at once.
+        async with self.sync_slots:
+            await self._sync(workspace,requested_at)
+    async def _sync(self,workspace,requested_at):
         owner=workspace.owner
         with central() as db:db.execute("UPDATE public.pm_sync_requests SET status='running',started_at=now(),message=NULL WHERE user_id=%s",(owner,))
         try:
@@ -116,6 +122,7 @@ class Registry:
                         await self.workspaces.pop(owner).scheduler.shutdown()
                 for user in users:
                     workspace=self.get(user['id']);workspace.scheduler.tick()
+                    await asyncio.sleep(0)
                 for request in pending:
                     owner=request['user_id'];task=self.sync_tasks.get(owner)
                     if task is None or task.done():

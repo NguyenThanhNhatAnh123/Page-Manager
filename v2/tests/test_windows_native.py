@@ -70,3 +70,14 @@ def test_private_file_acl_uses_actual_windows_sid(tmp_path, monkeypatch):
     path = tmp_path / 'fixture.txt'; path.write_text('not a credential')
     private(path)
     assert path.read_text() == 'not a credential'
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows inherited ACL integration')
+def test_private_directory_allows_owner_to_create_nested_data(tmp_path):
+    from scripts.private_files import private
+    directory = tmp_path / 'private'; directory.mkdir()
+    private(directory)
+    nested = directory / 'postgres' / 'pg_wal' / 'archive_status'
+    nested.mkdir(parents=True)
+    value = nested / 'probe'; value.write_text('local fixture')
+    assert value.read_text() == 'local fixture'

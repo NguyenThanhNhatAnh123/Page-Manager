@@ -9,6 +9,7 @@ Lịch đăng mở theo từng System User, phân trang nhóm và lịch chi ti�
 MCP Codex/Claude hỗ trợ quản lý Page, video và đăng/đặt lịch Reel trong kho của chủ token. Yêu cầu đăng đã được chủ kho giao cho agent dùng chính sách trực tiếp, không duyệt Telegram. Cơ chế kiểm tra nguồn, UUID chống tạo trùng và xác minh kết quả đăng chưa rõ vẫn được giữ.
 
 - [Mã v2 và hướng dẫn chạy](v2/README.md)
+- [Dev/test trực tiếp Windows](v2/examples/windows-dev.md): `START-V2-DEV.bat` / `STOP-V2-DEV.bat`, database riêng, kiểm tra MCP bằng hai CLI thật.
 - [Docker Compose](v2/docker-compose.yml)
 - [Bộ chạy trực tiếp Windows 11](v2/server/windows/README.md): PostgreSQL, Python, Rust và Caddy; tự khởi động bằng Task Scheduler/Windows Service. Không cần máy ảo, WSL hay Docker. Domain dự kiến `eagleglobal2027.com`; chưa thay DNS. `CHECK-SERVER-WINDOWS.bat` mặc định chỉ kiểm tra.
 - [Phương án Linux/VM tùy chọn](v2/server/README.md): Docker Engine, health recovery và backup.

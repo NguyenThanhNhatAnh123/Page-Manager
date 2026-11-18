@@ -36,6 +36,29 @@ def test_metric_parser_requires_exact_name():
     assert metric_value(payload,'views') is None
 
 
+async def test_concurrent_login_sync_is_bounded_and_all_owners_finish(monkeypatch):
+    from worker.app import Registry
+    registry=Registry();release=asyncio.Event();started=asyncio.Event()
+    active=0;maximum=0;completed=[]
+    async def refresh(owner,requested_at):
+        nonlocal active,maximum
+        active+=1;maximum=max(maximum,active)
+        if active==2:started.set()
+        try:
+            await release.wait();completed.append(owner)
+        finally:active-=1
+    monkeypatch.setattr(registry,'_sync',refresh)
+    tasks=[asyncio.create_task(registry.sync(owner,None)) for owner in range(20)]
+    try:
+        await asyncio.wait_for(started.wait(),timeout=5)
+        assert active==2 and not completed
+        release.set();await asyncio.gather(*tasks)
+        assert maximum==2 and sorted(completed)==list(range(20))
+    finally:
+        release.set()
+        await asyncio.gather(*tasks,return_exceptions=True)
+
+
 @pytest.fixture(scope='module')
 def runtime(tmp_path_factory):
     dsn=os.environ.get('PM_TEST_DATABASE_URL')

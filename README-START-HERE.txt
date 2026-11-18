@@ -8,8 +8,10 @@ Vận hành 24/24 trên server Windows 11:
 5. Cài mới có 20 tài khoản trống. Chuyển kho hiện tại cần database, media
    và đúng khóa mã hóa; không tạo lại lệnh đăng cho các Reel đã xuất bản.
 
-Máy dev hiện dùng bản thử Codespaces: CONNECT-V2-CODESPACE.bat,
-http://127.0.0.1:8020. Codespaces có idle timeout, không phải server 24/24.
+Máy dev chạy native bằng START-V2-DEV.bat; dừng bằng STOP-V2-DEV.bat.
+Database dev độc lập, hướng dẫn: v2/examples/windows-dev.md.
+Codespaces cũ dùng CONNECT-V2-CODESPACE.bat, cũng chiếm cổng 8020;
+không chạy đồng thời hai launcher. Codespaces có idle timeout.
 Máy này chỉ dev/test; không cài task/service server hoặc đổi DNS tại đây.
 Phương án Hyper-V/Linux vẫn tùy chọn, xem v2/server/README.md.
 

@@ -4,6 +4,8 @@ Rust gateway + Python Meta worker + React/TypeScript frontend. Mỗi tài khoả
 
 Server Windows 11 có thể chạy trực tiếp, không cần Ubuntu/Hyper-V/WSL/Docker: xem [bộ native Windows](server/windows/README.md). Domain dự kiến **eagleglobal2027.com**. Máy hiện tại chỉ dev/test, không đăng ký service server hoặc đổi DNS. CI Windows build Rust/MSVC và kiểm tra worker, 20 kho, gateway, task SYSTEM và bundle; việc chạy trên máy bật Smart App Control vẫn phụ thuộc độ tin cậy/chữ ký của executable và thư viện Python.
 
+Trên máy dev dùng **`START-V2-DEV.bat`**, dừng bằng **`STOP-V2-DEV.bat`**. Đây là database dev riêng, không đọc `.env`/kho Page cũ. Xem [hướng dẫn dev/test và probe MCP CLI](examples/windows-dev.md).
+
 ## Phạm vi
 
 - Giữ lõi Python `PageManager`, `TokenReelAssets`, `TokenReelScheduler`, revision token, UUID chống trùng và checkpoint trước mỗi lệnh Meta.

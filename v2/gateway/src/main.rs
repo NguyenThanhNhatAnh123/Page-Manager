@@ -203,7 +203,10 @@ async fn proxy(State(app):State<App>,req:Request)->Result<Response,Failure> {
   let bytes=to_bytes(req.into_body(),128_000).await.map_err(|_|fail(StatusCode::PAYLOAD_TOO_LARGE,"Dữ liệu quá lớn."))?;
   reqwest::Body::from(bytes)
  };
- let result=upstream.body(request_body).send().await.map_err(|_|fail(StatusCode::BAD_GATEWAY,"Dịch vụ Meta chưa sẵn sàng. Thử lại sau."))?;
+ let result=upstream.body(request_body).send().await.map_err(|error|{
+  eprintln!("Worker transport failure: {}",error.without_url());
+  fail(StatusCode::BAD_GATEWAY,"Dịch vụ Meta chưa sẵn sàng. Thử lại sau.")
+ })?;
  let status=result.status();let headers=result.headers().clone();
  if method!=Method::GET {let _=sqlx::query("INSERT INTO pm_audit(user_id,action,status) VALUES($1,$2,$3)").bind(&a.id).bind(if path=="/mcp"{"mcp_request"}else{"api_write"}).bind(status.as_u16() as i32).execute(&app.db).await;}
  let mut response=Response::new(Body::from_stream(result.bytes_stream()));*response.status_mut()=status;
