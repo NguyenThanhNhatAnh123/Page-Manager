@@ -341,7 +341,8 @@ function SyncLine({
 }) {
   return (
     <div className="sync-line">
-      <div>
+      <div className="sync-summary">
+        <div className="sync-current">
         <span
           className={`live-dot ${sync?.status === "running" ? "pulse" : ""}`}
         />
@@ -356,8 +357,9 @@ function SyncLine({
                   ? `Cập nhật ${date(sync.finished_at)}`
                   : "Chưa đồng bộ"}
         </span>
+        </div>
         <small className="sync-schedule">Tự động mỗi {sync?.interval_hours || 12} giờ{sync?.next_auto_at ? ` · Lần tới ${date(sync.next_auto_at)}` : ""}</small>
-        {sync?.status === "completed" && sync.message && <small>{sync.message}</small>}
+        {sync?.status === "completed" && sync.message && <small className="sync-message">{sync.message}</small>}
       </div>
       <button
         className="subtle"
@@ -1471,7 +1473,7 @@ function PageCard({
     {
       label: "Người theo dõi",
       value: followerCount,
-      detail: `Meta followers_count · ${typeof page.details?.followers_observed_at === "string" ? `Đọc lúc ${date(page.details.followers_observed_at)}` : "Chưa có thời điểm đọc; dùng Đồng bộ ngay để cập nhật."}`,
+      detail: `Người theo dõi từ Meta · ${typeof page.details?.followers_observed_at === "string" ? `Đọc lúc ${date(page.details.followers_observed_at)}` : "Chưa có thời điểm đọc; dùng Đồng bộ ngay để cập nhật."}`,
     },
     {
       label: "Lượt phát Reel",

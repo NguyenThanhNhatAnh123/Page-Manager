@@ -712,8 +712,12 @@ small.view-tier.breakout {
   font-size: 13px;
 }
 .dev-mode-notice svg { flex-shrink: 0; margin-top: 2px; }
-.sync-schedule { color: var(--muted); font-size: 11px; margin-left: 10px; }
-@media (max-width: 700px) { .sync-schedule { display: none; } }
+.sync-line > .sync-summary { flex: 1; min-width: 0; flex-wrap: wrap; gap: 4px 12px; }
+.sync-current { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sync-schedule { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.sync-message { flex-basis: 100%; padding-left: 11px; font-size: 12px; line-height: 1.5; }
+.sync-line > button { flex-shrink: 0; white-space: nowrap; }
+@media (max-width: 700px) { .sync-schedule { flex-basis: 100%; padding-left: 11px; } }
 .dev-mode-notice small { display: block; color: var(--muted); margin-top: 4px; line-height: 1.5; }
 .users-toolbar .hint {
   margin: 0;
