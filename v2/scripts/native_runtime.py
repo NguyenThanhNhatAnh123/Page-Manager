@@ -115,6 +115,9 @@ def native_environment(values, worker_module='worker.app:app'):
                'USERNAME', 'USERDOMAIN', 'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE'}
     environment = {key: value for key, value in os.environ.items() if key.upper() in allowed}
     environment.update(values)
+    if values.get('PM_NATIVE_SERVER') == '1':
+        # Each immutable release serves its matching frontend; server.env stays intact.
+        environment['PM_FRONTEND_DIR'] = (ROOT / 'frontend/dist').as_posix()
     environment.update(PYTHONUNBUFFERED='1', PYTHONUTF8='1', PM_NATIVE_RUNTIME='1', NO_PROXY='127.0.0.1,localhost')
     if worker_module != 'worker.app:app':
         environment['PM_TEST_DATABASE_URL'] = values['DATABASE_URL']

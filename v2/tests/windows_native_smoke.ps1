@@ -1,11 +1,13 @@
 # CI only: a fresh private cluster, fake provider data, no Meta calls or real users.
 $ErrorActionPreference = 'Stop'
-if ($env:GITHUB_ACTIONS -ne 'true') { throw 'This disposable integration script runs only in GitHub Actions.' }
+if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'This disposable integration script runs only on GitHub-hosted runners.' }
 $appRoot = (Get-Location).Path
 $testRoot = Join-Path $env:RUNNER_TEMP 'pagemanager-native-ci'
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 $pgBin = $env:PGBIN
 if (!$pgBin) { throw 'Official PostgreSQL Windows tools not found.' }
+$pgVersion = & (Join-Path $pgBin 'postgres.exe') --version
+if ($LASTEXITCODE -or $pgVersion -notmatch 'PostgreSQL\) 18\.') { throw 'Use PostgreSQL major 18 for native CI.' }
 $pgData = Join-Path $testRoot 'postgres'
 $pythonExe = (Get-Command python.exe).Source
 $gateway = Join-Path $appRoot 'gateway\target\release\pagemanager-gateway.exe'
@@ -53,7 +55,7 @@ try {
     Checked (Join-Path $pgBin 'pg_ctl.exe') @('-D',$pgData,'-l',(Join-Path $testRoot 'postgres.log'),'-o','-h 127.0.0.1 -p 55433','-w','start')
     $env:PM_TEST_DATABASE_URL = 'postgresql://postgres@127.0.0.1:55433/postgres'
     $env:DATABASE_URL = $env:PM_TEST_DATABASE_URL
-    Checked $pythonExe @('-m','pytest','tests/test_worker.py','tests/test_server.py','tests/test_windows_native.py','-q')
+    Checked $pythonExe @('-m','pytest','tests/test_worker.py','tests/test_server.py','tests/test_windows_native.py','tests/test_transfer_windows.py','tests/test_deployment.py','-q')
     $state = Join-Path $testRoot 'foreground'
     $config = Write-Configuration $state $env:PM_TEST_DATABASE_URL
     $foreground = Start-Process -FilePath $pythonExe -ArgumentList ('"{0}" --config "{1}" --gateway "{2}" --state-dir "{3}" --worker-module tests.runtime_server:app' -f $runtime,$config,$gateway,$state) -WorkingDirectory $appRoot -WindowStyle Hidden -PassThru
@@ -84,7 +86,7 @@ try {
     Stop-PageManagerRuntime -StateDirectory $taskState -TaskName $taskName
 
     # Parse native scripts and validate the exact domain without requesting real TLS.
-    foreach ($file in Get-ChildItem server/windows -Include *.ps1,*.psm1 -Recurse) {
+    foreach ($file in Get-ChildItem server/windows,scripts -Include *.ps1,*.psm1 -Recurse) {
         $tokens=$null; $errors=$null
         $null=[Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors)
         if ($errors.Count) { throw 'Invalid native PowerShell script.' }

@@ -9,10 +9,10 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIXES = ['v2/worker', 'v2/scripts', 'v2/migrations', 'v2/server/windows', 'meta-page-manager/backend']
-FILES = ['v2/requirements.txt', 'meta-page-manager/requirements.txt', 'CHECK-SERVER-WINDOWS.bat', 'v2/server/manager.py', 'AGENTS.md', 'SERVER-HANDOFF.md']
+FILES = ['v2/requirements.txt', 'v2/requirements-lock.txt', 'meta-page-manager/requirements.txt', 'CHECK-SERVER-WINDOWS.bat', 'v2/server/manager.py', 'AGENTS.md', 'SERVER-HANDOFF.md']
 
 
-def package(gateway, output):
+def package(gateway, output, wheelhouse=None):
     gateway = gateway.resolve()
     if not gateway.is_file() or gateway.name != 'pagemanager-gateway.exe':
         raise ValueError('Supply the built Windows gateway executable.')
@@ -28,12 +28,18 @@ def package(gateway, output):
         if path.is_file():
             items[path.relative_to(ROOT).as_posix()] = path
     items['v2/bin/pagemanager-gateway.exe'] = gateway
+    if wheelhouse is not None:
+        wheels = list(wheelhouse.glob('*.whl'))
+        if not wheels or any(not path.is_file() or path.is_symlink() for path in wheels):
+            raise ValueError('Supply the downloaded, pinned Windows/Python 3.12 wheelhouse.')
+        items.update({'wheelhouse/' + path.name: path for path in wheels})
     # Defense in depth in addition to git's tracked-file boundary.
     for name, path in items.items():
         if path.is_symlink() or any(part in ('.env', '.runtime', '.venv', 'data', 'node_modules', '__pycache__', 'server.env') for part in Path(name).parts):
             raise ValueError('Operational/untrusted path cannot enter the bundle.')
     revision = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
-    manifest = {'source_commit': revision, 'gateway_version_probe': True,
+    manifest = {'format': 2, 'source_commit': revision, 'gateway_version_probe': True,
+                'python': '3.12', 'postgresql_major': 18,
                 'code_signing': 'Checksums are integrity checks, not Authenticode trust. Verify Windows execution/signature on the target server.', 'files': {}}
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
@@ -49,5 +55,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--gateway', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--wheelhouse', type=Path)
     args = parser.parse_args()
-    package(args.gateway, args.output)
+    package(args.gateway, args.output, args.wheelhouse)

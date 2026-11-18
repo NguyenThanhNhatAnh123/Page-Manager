@@ -1,0 +1,57 @@
+name: Deploy Windows production
+
+on:
+  workflow_run:
+    workflows: [PageManager v2]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: pagemanager-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      vars.PM_CD_ENABLED == 'true' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: windows-2025
+    timeout-minutes: 25
+    environment: production
+    steps:
+      - name: Require the successful run to match current main
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          $head = gh api "repos/$env:REPOSITORY/branches/main" --jq .commit.sha
+          if ($LASTEXITCODE -or $head -ne $env:COMMIT) { throw 'A newer main exists. Deploy its successful CI run instead.' }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: PageManager-windows-x64
+          path: release
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Send the tested release to the existing Windows server
+        shell: pwsh
+        env:
+          PM_DEPLOY_HOST: ${{ secrets.PM_DEPLOY_HOST }}
+          PM_DEPLOY_PORT: ${{ secrets.PM_DEPLOY_PORT }}
+          PM_DEPLOY_USER: ${{ secrets.PM_DEPLOY_USER }}
+          PM_DEPLOY_SSH_KEY: ${{ secrets.PM_DEPLOY_SSH_KEY }}
+          PM_DEPLOY_KNOWN_HOSTS: ${{ secrets.PM_DEPLOY_KNOWN_HOSTS }}
+          PM_DEPLOY_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: ./v2/scripts/Send-Deployment.ps1 -ArtifactDirectory ./release

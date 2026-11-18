@@ -29,6 +29,11 @@ v2/server/backups/
 **/*.pfx
 **/*.p12
 **/*.fernet
+**/*.dump
+**/private-data.*
+**/transfer-key*
+**/restored-credentials/
+**/wheelhouse/
 **/initial-users.txt
 **/.claude/
 **/.codex/
