@@ -1,5 +1,9 @@
 # Kiểm tra bản v2
 
+Lượt native dev mới nhất: [sao chép kho admin và CRUD](admin-codespace-to-local.json), [đồng bộ Meta định kỳ](periodic-meta-sync.json). Kho local có 43 Page, hai token và lịch sử 32 Reel hoàn tất; 12 thành viên có kho độc lập. Lượt đọc thật đã hoàn tất, xác nhận follower khớp Meta, số liệu có thời điểm đọc và lịch nền kế tiếp cách 12 giờ. Nút đồng bộ thủ công đã được bấm trên FE thật. HTTP/MCP đăng/sửa Meta vẫn bị chặn trong dev/test; Codex và Claude CLI đều đọc MCP thành công. Ảnh, danh tính, tổng tương tác thực tế và thông tin đăng nhập của lượt này chỉ lưu private, không thêm vào thư mục ảnh QA.
+
+Lịch 12/24 giờ được kiểm thử bằng cách làm cũ thời điểm đến hạn trong database kiểm thử riêng, không đợi 12 giờ thật. Các kiểm tra gồm yêu cầu trùng/cũ, hủy rồi phục hồi và một kho lỗi không chặn kho khác. Báo cáo bên dưới ghi lại các mốc trước đó theo thời gian.
+
 Các ảnh trong thư mục này được chụp từ FE đã build, dùng kho QA riêng, không phải số liệu Facebook thật. Harness `tests/preview_server.py` chỉ đọc, không chạy scheduler và không gọi Meta. Video kiểm thử là mẫu CC0 của MDN: https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4 (không nằm trong source phát hành).
 
 - `page-manager-light.png`, `page-manager-dark.png`: Tổng quan sáng/tối.

@@ -1,0 +1,104 @@
+{
+  "date": "2026-11-17",
+  "timezone": "America/Los_Angeles",
+  "checked_at": "2026-11-18T05:22:01.189433+00:00",
+  "source": "existing Codespace admin workspace",
+  "target": "native Windows local admin workspace",
+  "copied": {
+    "system_user_credentials": 2,
+    "page_credentials_reencrypted": 43,
+    "pages": 43,
+    "source_group_sizes": [
+      11,
+      32
+    ],
+    "video_assets": 32,
+    "completed_reels": 32,
+    "media_bytes": 215610545
+  },
+  "validation": {
+    "connections_with_tokens": 2,
+    "pages": 43,
+    "video_assets": 32,
+    "completed_reels": 32,
+    "history_identical_after_start": true,
+    "imported_members": 12,
+    "independent_member_stores": true,
+    "initial_password_verified": true,
+    "session_days": 30,
+    "http_and_mcp_publication_blocked": true
+  },
+  "accounts": {
+    "members_imported": 12,
+    "total_accounts": 20,
+    "unused_original_templates": 7,
+    "initial_password_as_requested": true,
+    "must_change_on_first_login": true,
+    "independent_workspaces": true,
+    "admin_login_and_personal_mcp_preserved": true
+  },
+  "crud": {
+    "accounts": [
+      "create",
+      "read",
+      "display_name_and_username_update",
+      "role_and_active_update",
+      "password_reset",
+      "delete_auth_with_workspace_archive"
+    ],
+    "meta_credentials": [
+      "create",
+      "read_redacted_metadata",
+      "replace_and_update",
+      "delete_credential_disconnect_keep_history"
+    ],
+    "mcp_tokens": [
+      "create",
+      "read_metadata",
+      "rename_and_permission_update",
+      "revoke"
+    ],
+    "delete_guards": [
+      "cannot delete current account",
+      "retain active administrator",
+      "reject account with unfinished Reel schedules"
+    ],
+    "max_users": 20
+  },
+  "checks": {
+    "python_tests_local": 65,
+    "gateway_tests_local": 7,
+    "frontend_tests": 6,
+    "rust_release_build": true,
+    "frontend_build": true,
+    "ui_account_modal_verified": true,
+    "ui_source_groups_verified": true,
+    "actual_http_and_mcp_posting_rejected": true,
+    "core_meta_read_tests_local": 144,
+    "live_meta_sync_completed": true,
+    "new_sync_restored_after_restart": true,
+    "history_identical_after_manual_refresh": true
+  },
+  "backup": {
+    "encrypted_source_snapshot_retained": true,
+    "local_database_and_media_before_import_retained": true,
+    "source_records_preserved": true,
+    "codespace_returned_to_shutdown": true,
+    "local_tokens_rekeyed_for_target_owner": true,
+    "media_sha256_verified": 32
+  },
+  "limits": [
+    "Dev/test: PM_DEV_READ_ONLY=1 disables scheduler and real Meta publication/edit operations.",
+    "Twelve members use the supplied initial password and must change it at first login.",
+    "Seven unused original sample accounts remain within the 20-account capacity; no actual member was deleted.",
+    "Account deletion removes authentication access and retains the UUID-bound workspace archive; no permanent media purge is exposed.",
+    "No old Reel was rescheduled or republished.",
+    "Names, passwords, token values, database dumps, media and private backup keys are excluded from the repository."
+  ],
+  "crud_commit": "bf14f4697914b7d17a77e7dfe358df52294b6b35",
+  "metrics_commit": "19ca2c98050e2c5bcc1628d37f0adeb986a5be1f",
+  "crud_ci": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44236782683",
+  "ci": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44242735825",
+  "frontend_commit": "c5199502a56c61b9b5306f0b749f087727fb788a",
+  "ci_conclusion": "success"
+}

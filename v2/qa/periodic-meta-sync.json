@@ -1,0 +1,110 @@
+{
+  "date": "2026-11-17",
+  "timezone": "America/Los_Angeles",
+  "checked_at": "2026-11-18T05:22:01.198311+00:00",
+  "source_commit": "c5199502a56c61b9b5306f0b749f087727fb788a",
+  "ci": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44242735825",
+  "mode": "native-windows-dev-only",
+  "session_days": 30,
+  "schedule": {
+    "default_interval_hours": 12,
+    "supported_intervals_hours": [
+      12,
+      24
+    ],
+    "independent_of_web_sessions": true,
+    "durable_owner_scoped_queue": true,
+    "active_connected_workspaces_only": true,
+    "max_concurrent_owners": 2,
+    "coalesce_pending_and_running": true,
+    "manual_and_login_cooldown_seconds": 60,
+    "recover_unfinished_request_on_start": true,
+    "cancelled_request_can_resume": true,
+    "atomic_claim_prevents_stale_tick_duplicate": true,
+    "one_bad_workspace_does_not_block_others": true,
+    "manual_button_views": [
+      "overview",
+      "pages",
+      "analytics"
+    ]
+  },
+  "live_read_only_check": {
+    "completed": true,
+    "followers_cache_matches_live_meta": true,
+    "follower_observation_timestamp_saved": true,
+    "sample_page_tracked_videos": 8,
+    "sample_page_view_coverage": 8,
+    "sample_page_comment_coverage": 8,
+    "sample_page_share_coverage": 7,
+    "video_count": 306,
+    "views_known": 306,
+    "comments_known": 306,
+    "shares_known": 55,
+    "missing_counters_kept_nullable": true,
+    "next_refresh_exactly_12h_after_finish": true,
+    "manual_request_coalesced_during_existing_sync": true,
+    "manual_ui_button_queued_a_new_refresh_after_cooldown": true,
+    "completed_reel_history_unchanged": true,
+    "publication_disabled_http_and_mcp": true,
+    "manual_refresh_completed_after_restart": true,
+    "history_identical_after_manual_refresh": true
+  },
+  "checks": {
+    "v2_python_tests_local": 65,
+    "core_meta_read_tests_local": 144,
+    "gateway_tests_local": 7,
+    "frontend_tests": 6,
+    "rust_release_build": true,
+    "frontend_build": true,
+    "periodic_due_simulated_in_disposable_test_database": true,
+    "manual_button_and_real_follower_visible_in_browser": true,
+    "responsive_layout": {
+      "desktop_viewport_width": 1280,
+      "desktop_document_width": 1265,
+      "mobile_viewport_width": 390,
+      "mobile_document_width": 375,
+      "schedule_font_px": 12,
+      "viewport_restored": true
+    },
+    "completed_partial_sync_message_layout_verified": true
+  },
+  "claude_review": {
+    "tools_enabled": false,
+    "findings_applied": [
+      "atomically claim an unprocessed pending request",
+      "isolate each owner during workspace ticks and automatic queue insertion"
+    ],
+    "additional_regression": "cancelled in-flight request is returned to pending"
+  },
+  "limits": [
+    "The app and Windows device must remain running for periodic sync.",
+    "A 30-day web session does not extend Meta token validity.",
+    "This check did not wait 12 hours; due-time behavior was tested with aged timestamps in the disposable test database.",
+    "Only counters actually returned by Meta are stored; unavailable shares are not inferred.",
+    "Real screenshots, identifiers, interaction totals and credentials remain private on the local machine."
+  ],
+  "mcp": {
+    "codex": {
+      "client": "codex",
+      "exit_code": 0,
+      "completed_mcp_tools": [
+        "pages_connections",
+        "via_status"
+      ],
+      "passed": true
+    },
+    "claude": {
+      "client": "claude",
+      "exit_code": 0,
+      "completed_mcp_tools": [
+        "pages_connections",
+        "via_status"
+      ],
+      "passed": true
+    }
+  },
+  "logic_commit": "19ca2c98050e2c5bcc1628d37f0adeb986a5be1f",
+  "logic_ci": "https://github.com/NguyenThanhNhatAnh123/Page-Manager/actions/runs/44241811526",
+  "ci_conclusion": "success",
+  "result": "success"
+}
