@@ -72,7 +72,7 @@ with central() as db:users=db.execute('SELECT id FROM public.pm_users ORDER BY i
 registry=Registry()
 for user in users:registry.get(user['id'])
 workspace=registry.get(users[0]['id']);connect(workspace,'Disconnected deployment fixture')
-job,_=make_job(workspace)
+(job,_),_=make_job(workspace)
 workspace.manager.store.reel_checkpoint(job['id'],{'finish_attempted':True,'finish_ack':True},status='completed',video_id='123456789',published_url='https://www.facebook.com/reel/123456789')
 with workspace.manager.store.connect() as db:
     db.execute('UPDATE connections SET connected=0,encrypted_token=NULL')

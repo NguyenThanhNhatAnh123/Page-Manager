@@ -87,6 +87,7 @@ if ($Action -eq 'Install') {
     Invoke-Checked $pythonExe $databaseArguments
     if ($Ingress -eq 'Caddy') { Invoke-Checked $CaddyExe @('validate','--config',(Join-Path $StateDirectory 'Caddyfile'),'--adapter','caddyfile') }
     Register-PageManagerRuntime -PythonExe $pythonExe -RuntimeScript $runtimeScript -ConfigFile $configFile -GatewayExe $gatewayExe -StateDirectory $StateDirectory -AppRoot $AppRoot -TaskName $TaskName
+    Disable-ScheduledTask -TaskPath $taskPath -TaskName $TaskName | Out-Null
     if ($Ingress -eq 'Caddy') {
         $binaryPath = '"{0}" run --config "{1}" --adapter caddyfile' -f $CaddyExe,(Join-Path $StateDirectory 'Caddyfile')
         $service = Get-CimInstance Win32_Service -Filter "Name='$serviceName'"

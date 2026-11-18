@@ -105,6 +105,8 @@ try {
             Start-PageManagerRuntime -StateDirectory $StateDirectory -TaskName $TaskName
             Wait-AppHealthy
             if (Test-Path -LiteralPath $baseline) { Invoke-Checked $python @($stateScript, '--config', $config, '--compare', $baseline) }
+            [pscustomobject]@{ commit=$ExpectedCommit; release=$release; previous=$previous; status='rolled_back' } |
+                ConvertTo-Json | Set-Content -LiteralPath (Join-Path $audit 'result.json') -Encoding UTF8
             Write-Warning 'Previous code restored and healthy. Database, media and server.env were not restored or reset.'
         }
         throw $failure
