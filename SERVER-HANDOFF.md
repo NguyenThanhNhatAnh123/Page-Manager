@@ -42,7 +42,7 @@ Tài liệu: [Cloudflare Full strict](https://developers.cloudflare.com/ssl/orig
 
 ## Thứ tự cài/khôi phục
 
-1. Giải nén bundle chạy vào `C:\Program Files\PageManager`. Xác minh hash, binary và Python native dependencies theo `v2\server\windows\README.md`. Cài Python 3.12 x64, PostgreSQL 18 x64 và Caddy từ nguồn chính thức nếu server chưa có.
+1. Giải nén bundle chạy vào `C:\Program Files\PageManager`. Xác minh hash, binary và Python native dependencies theo `v2\server\windows\README.md`. Cài Python 3.12 x64, PostgreSQL 18 x64 và Caddy từ nguồn chính thức nếu server chưa có. Gói database này được xuất từ PostgreSQL 18; khôi phục bằng cùng major 18, không hạ xuống 17.
 2. Tạo venv tại `C:\Program Files\PageManager\v2\.venv`. Có thể dùng `pip install --no-index --find-links <thu-muc-wheelhouse> -r <requirements-lock.txt>` từ gói chuyển.
 3. Dùng `Install-Native.ps1 -Action Install` để chuẩn bị cấu hình, database rỗng và task/service. Bước Install **chưa Start app**. Chưa chạy `start.ps1`, `provision.py` hoặc `-Action Start`: target cần rỗng để khôi phục.
 4. Mở PowerShell Administrator trên server. Chạy công cụ dưới đây với đường dẫn thật của file mã hóa, khóa riêng và bộ PostgreSQL:
@@ -65,4 +65,3 @@ Restore từ chối database/media đích đã có dữ liệu. Nếu lỡ Start
 7. Khi chuyển vận hành, bảo đảm chỉ một máy được phép xử lý đăng bài. Máy dev tiếp tục giữ `PM_DEV_READ_ONLY=1`. Kiểm tra truy cập bên ngoài và khả năng chạy sau reboot khi chưa đăng nhập Windows.
 
 Không thay Smart App Control của server dựa vào việc máy dev đã cho phép trước đó. Nếu Windows chặn executable/thư viện, ghi rõ thành phần và xử lý trên đúng server theo chỉ dẫn của người dùng.
-

@@ -968,13 +968,14 @@ small.view-tier.breakout {
 
 /* Connections: visible per-row Kiểm tra / Đồng bộ Page next to the ellipsis. */
 .connection-actions-cell {
-  width: 1%;
+  width: 260px;
+  min-width: 250px;
 }
 .connection-row-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
   min-width: 0;
   max-width: 100%;
@@ -1025,6 +1026,7 @@ small.view-tier.breakout {
   }
   .connection-row-actions {
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
   .connection-row-actions .connection-pill {
     font-size: 12px;
