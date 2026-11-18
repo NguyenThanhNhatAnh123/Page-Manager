@@ -1,7 +1,8 @@
 function Register-PageManagerRuntime {
     [CmdletBinding()]
     param([string]$PythonExe,[string]$RuntimeScript,[string]$ConfigFile,[string]$GatewayExe,[string]$StateDirectory,[string]$AppRoot,
-          [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$TaskName='PageManager-v2')
+          [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$TaskName='PageManager-v2',
+          [string]$PreviousAppRoot)
     foreach ($path in @($PythonExe,$RuntimeScript,$ConfigFile,$GatewayExe,$StateDirectory,$AppRoot)) {
         if ($path -match '["\r\n]') { throw 'Unsupported path characters.' }
     }
@@ -11,7 +12,8 @@ function Register-PageManagerRuntime {
     try { $null = $scheduler.GetFolder('\PageManager') } catch { $null = $scheduler.GetFolder('\').CreateFolder('PageManager') }
     $description = "PageManager native v2: $AppRoot"
     $existing = Get-ScheduledTask -TaskPath $taskPath -TaskName $TaskName -ErrorAction SilentlyContinue
-    if ($existing -and $existing.Description -ne $description) { throw 'A different task already uses this name.' }
+    if ($existing -and $existing.Description -ne $description -and
+        (!$PreviousAppRoot -or $existing.Description -ne "PageManager native v2: $PreviousAppRoot")) { throw 'A different task already uses this name.' }
     if ($existing -and (Get-PageManagerInstances -TaskName $TaskName) -gt 0) { throw 'Stop the existing native runtime before updating.' }
     $arguments = '"{0}" --config "{1}" --gateway "{2}" --state-dir "{3}"' -f $RuntimeScript,$ConfigFile,$GatewayExe,$StateDirectory
     $action = New-ScheduledTaskAction -Execute $PythonExe -Argument $arguments -WorkingDirectory $AppRoot

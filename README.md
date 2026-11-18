@@ -12,6 +12,7 @@ MCP Codex/Claude hỗ trợ quản lý Page, video và đăng/đặt lịch Reel
 - [Dev/test trực tiếp Windows](v2/examples/windows-dev.md): `START-V2-DEV.bat` / `STOP-V2-DEV.bat`, database riêng, kiểm tra MCP bằng hai CLI thật.
 - [Docker Compose](v2/docker-compose.yml)
 - [Bộ chạy trực tiếp Windows 11](v2/server/windows/README.md): PostgreSQL, Python, Rust và Caddy; tự khởi động bằng Task Scheduler/Windows Service. Không cần máy ảo, WSL hay Docker. Domain dự kiến `eagleglobal2027.com`; chưa thay DNS. `CHECK-SERVER-WINDOWS.bat` mặc định chỉ kiểm tra.
+- [CI/CD tự động tới Windows server](v2/server/windows/CI-CD.md): kiểm thử PostgreSQL 18, release offline có checksum và updater tải bản main đã qua CI bằng kết nối outbound, kèm health check/rollback. Cloudflare Tunnel phục vụ domain eagleglobal2027.com.
 - [Phương án Linux/VM tùy chọn](v2/server/README.md): Docker Engine, health recovery và backup.
 - [Phương án chạy thử Linux qua Codespaces](v2/examples/codespaces-plan.md)
 - [Kết quả kiểm tra và các phần chưa xác minh](v2/qa/verification.json)

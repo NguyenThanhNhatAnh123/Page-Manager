@@ -10,7 +10,7 @@ Tên miền đã chuẩn bị: **https://eagleglobal2027.com**. MCP: **https://e
 | --- | --- |
 | Windows 11 x64 | Windows Home/Pro/Enterprise có Task Scheduler; phương án này không phụ thuộc Hyper-V |
 | Python 3.12 x64 | Cài all-users từ python.org; worker và supervisor chạy trong venv |
-| PostgreSQL 18 x64, hoặc 17 đang được hỗ trợ | Bản Windows chính thức, cài thành Windows Service tự bật; chỉ listen loopback |
+| PostgreSQL 18 x64 | Bản Windows chính thức, cài thành Windows Service tự bật; chỉ listen loopback. Gói dữ liệu chuyển từ major 18 phải restore bằng 18 |
 | Caddy 2 Windows amd64 | HTTPS và gia hạn chứng chỉ, chạy Windows Service `PageManagerHttps` |
 | Microsoft Visual C++ Redistributable x64 | Runtime cho binary/phụ thuộc Windows nếu bộ cài Python/PostgreSQL chưa cung cấp |
 | Bundle PageManager Windows x64 | Rust exe build sẵn + FE build + Python source; không cần compiler Rust/MSVC hoặc Node trên server |
@@ -36,11 +36,11 @@ Build Rust trên GitHub Windows runner giải quyết việc cần MSVC trên m�
 ```powershell
 Set-Location -LiteralPath 'C:\Program Files\PageManager\v2'
 py -3.12 -m venv .venv
-& '.\.venv\Scripts\python.exe' -m pip install -r requirements.txt
+& '.\.venv\Scripts\python.exe' -m pip install --no-index --find-links '..\wheelhouse' -r requirements-lock.txt
 .\server\windows\Install-Native.ps1 -Action Check
 ```
 
-Nếu PostgreSQL service là bản 17, thêm `-PostgresServiceName postgresql-x64-17`. Nếu port khác, thêm `-DatabasePort <port>` khi Install. Thực hiện bước Install sau khi probe executable đã chạy được:
+Nếu PostgreSQL service dùng tên khác mặc định, thêm `-PostgresServiceName <service-name>`. Giữ major 18 cho dữ liệu bàn giao. Nếu port khác, thêm `-DatabasePort <port>` khi Install. Thực hiện bước Install sau khi probe executable đã chạy được:
 
 ```powershell
 .\server\windows\Install-Native.ps1 -Action Install
@@ -53,6 +53,10 @@ Task **`\PageManager\PageManager-v2`** chạy dưới SYSTEM khi Windows startup
 Caddy dùng Windows Service tự khởi động và chính sách restart khi lỗi. PostgreSQL giữ Windows Service của bộ cài. Không dùng WinSW/NSSM hoặc một cửa sổ terminal phải mở liên tục.
 
 ## Domain eagleglobal2027.com
+
+Nếu dùng Cloudflare Tunnel, truyền `-Ingress Tunnel` cho `Install`, `Start` và `Status`. Bộ cài bỏ yêu cầu Caddy và không đăng ký service HTTPS trong chế độ này; tunnel service riêng chuyển tiếp tới `http://127.0.0.1:8020`, Cloudflare cung cấp HTTPS bên ngoài. Giữ `PM_PUBLIC_ORIGIN=https://eagleglobal2027.com` và cookie secure. Tunnel cần chạy dưới Windows service để tồn tại sau logout/reboot; không dùng quick tunnel tạm thời.
+
+Khi cài tự động, `-DatabaseAdminPasswordFile` có thể trỏ đến file mật khẩu admin PostgreSQL trong thư mục state đã bảo vệ. Mật khẩu không đi qua đối số dòng lệnh, Git hoặc log; bỏ tham số này để nhập qua prompt ẩn như trước.
 
 Domain hiện được phân giải nameserver Cloudflare trong lượt kiểm tra ngày 17/11/2026; chưa xác nhận record A/AAAA trỏ server. Chỉ cấu hình DNS khi đã biết **IP public của server/router** và đã kiểm tra đường vào mạng.
 
@@ -71,6 +75,8 @@ Bật và xem trạng thái:
 Health nội bộ: `http://127.0.0.1:8020/healthz`. Sau khi DNS/TLS hoàn tất, đăng nhập bằng tên miền HTTPS. Cài mới tự provision tối đa 20 tài khoản; file mật khẩu ban đầu tại `C:\ProgramData\PageManager\data\initial-users.txt` chỉ đọc trong console riêng của server, giao đúng người và đổi mật khẩu lần đầu.
 
 ## Bảo trì, dữ liệu hiện tại và reboot
+
+Luồng build và cập nhật tự động được mô tả tại [CI/CD Windows](CI-CD.md). Workflow chỉ gửi artifact code đã kiểm tra, giữ nguyên config/dữ liệu và có bước phục hồi code trước khi báo lỗi. Cấu hình SSH và bật CD thực hiện trên server riêng sau restore.
 
 ```powershell
 # Dừng app có chủ đích, đồng thời tắt trigger cho tới khi Start lại.
