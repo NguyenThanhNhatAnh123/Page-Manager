@@ -105,6 +105,9 @@ export type Sync = {
   refreshed: number;
   unavailable: number;
   message: string | null;
+  interval_hours?: number;
+  next_auto_at?: string | null;
+  reason?: string;
 };
 export type Analytics = {
   items: Reel[];

@@ -6,6 +6,8 @@ Kho admin Codespaces đã được sao chép một lần theo yêu cầu: 43 Pag
 
 `PM_DEV_READ_ONLY=1` đang bật: scheduler không chạy tác vụ đăng; HTTP/MCP chặn đăng, đặt lịch, tiếp tục/xác minh và sửa Meta. Giao diện hiển thị **Dev/test · Meta chỉ đọc**. CRUD tài khoản, token local, xem lịch sử và đọc/cập nhật thống kê vẫn hoạt động. Giữ chế độ này khi dev/test; không dùng việc sửa lịch cũ để kiểm tra đăng bài.
 
+Thống kê tự đồng bộ mỗi **12 giờ** cho từng kho có token, kể cả khi người dùng giữ phiên web 30 ngày hoặc đã đăng xuất. Đăng nhập và nút **Đồng bộ ngay** ở Tổng quan/Page/Thống kê cũng xếp hàng cập nhật, gồm follower và view/bình luận/chia sẻ của video. Yêu cầu trùng được gộp; trong 60 giây sau lần xong chưa tạo lượt mới. Có thể đặt `PM_ANALYTICS_SYNC_HOURS=24` trong `dev.env` rồi khởi động lại. Lịch nền chỉ chạy khi máy và ứng dụng đang bật; token Meta vẫn có vòng đời riêng.
+
 Trong **Người dùng**, quản trị viên có tạo/sửa/khóa/reset/xóa tài khoản và tên hiển thị. Giới hạn vẫn 20, gồm tài khoản đang dùng và tài khoản mẫu còn lại. Xóa một tài khoản không dùng để mở chỗ khi đã đủ 20; ứng dụng giữ kho cũ thành lưu trữ, không giao lại dữ liệu đó cho tài khoản mới. Trong **System User / Token**, xóa token ngắt nguồn/loại credential nhưng giữ lịch sử Page và Reel. Token đã lưu không được hiển thị ngược.
 
 ## Chạy và dừng
@@ -41,6 +43,6 @@ Chạy lại `setup` khi token thử hết hạn hoặc bị thu hồi: probe ki
 
 ## Dữ liệu kiểm thử
 
-`pagemanager_dev` dành cho giao diện dev và các tài khoản trống. `pagemanager_dev_test` dành cho pytest: chỉ chứa tài khoản `test_user*`, token giả, Page giả, lịch giả và chặn Meta bằng `tests.runtime_server`. Không trỏ `PM_TEST_DATABASE_URL` vào database có dữ liệu thật. Dừng gateway thử trước khi bật launcher dev vì cùng dùng cổng 8020/8021.
+`pagemanager_dev` dành cho giao diện dev, kho admin đã nhập và các thành viên có kho riêng. `pagemanager_dev_test` dành cho pytest: chỉ chứa tài khoản `test_user*`, token giả, Page giả, lịch giả và chặn Meta bằng `tests.runtime_server`. Không trỏ `PM_TEST_DATABASE_URL` vào database có dữ liệu thật. Dừng gateway thử trước khi bật launcher dev nếu cùng dùng cổng 8020/8021.
 
 Môi trường này phục vụ dev/test và chỉ hoạt động khi máy đang bật. Phương án server tự khởi động/HTTPS nằm ở [bộ native server](../server/windows/README.md).

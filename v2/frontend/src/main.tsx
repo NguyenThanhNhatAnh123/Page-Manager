@@ -356,17 +356,35 @@ function SyncLine({
                   ? `Cập nhật ${date(sync.finished_at)}`
                   : "Chưa đồng bộ"}
         </span>
+        <small className="sync-schedule">Tự động mỗi {sync?.interval_hours || 12} giờ{sync?.next_auto_at ? ` · Lần tới ${date(sync.next_auto_at)}` : ""}</small>
+        {sync?.status === "completed" && sync.message && <small>{sync.message}</small>}
       </div>
       <button
         className="subtle"
         onClick={onSync}
-        disabled={busy || sync?.status === "running"}
+        disabled={busy || sync?.status === "running" || sync?.status === "pending"}
       >
-        <RefreshCw size={13} className={busy ? "spin" : ""} />
-        Đồng bộ
+        <RefreshCw size={13} className={busy || sync?.status === "running" ? "spin" : ""} />
+        Đồng bộ ngay
       </button>
     </div>
   );
+}
+
+function WorkspaceSyncPanel({ user }: { user: User }) {
+  const query = useData<{ sync: Sync }>(user, "/api/analytics/sync", true);
+  const client = useQueryClient();
+  const [busy, setBusy] = useState(false), [error, setError] = useState<unknown>();
+  return <>
+    <SyncLine sync={query.data?.sync} busy={busy} onSync={async () => {
+      if (busy) return;
+      setBusy(true); setError(undefined);
+      try { await post("/api/analytics/sync"); await client.invalidateQueries({queryKey:[user.id]}); }
+      catch (value) { setError(value); }
+      finally { setBusy(false); }
+    }} />
+    {error != null && <ErrorBox error={error} />}
+  </>;
 }
 
 function ReelHistory({
@@ -1453,7 +1471,7 @@ function PageCard({
     {
       label: "Người theo dõi",
       value: followerCount,
-      detail: "Số người theo dõi được đọc từ Page.",
+      detail: `Meta followers_count · ${typeof page.details?.followers_observed_at === "string" ? `Đọc lúc ${date(page.details.followers_observed_at)}` : "Chưa có thời điểm đọc; dùng Đồng bộ ngay để cập nhật."}`,
     },
     {
       label: "Lượt phát Reel",
@@ -1617,6 +1635,7 @@ function Pages({ user }: { user: User }) {
   }
   return (
     <>
+      <WorkspaceSyncPanel user={user} />
       <div className="toolbar pages-toolbar">
         <SearchBox
           value={search}
@@ -4136,8 +4155,17 @@ function App() {
   }, []);
   useEffect(() => {
     if (!user || user.must_change) return;
+    let lastFinished: string | null = null;
     const stream = new EventSource("/api/stream");
-    stream.addEventListener("status", () => {
+    stream.addEventListener("status", (event) => {
+      try {
+        const finished = JSON.parse((event as MessageEvent).data).sync?.finished_at;
+        if (finished && finished !== lastFinished) {
+          lastFinished = finished;
+          client.invalidateQueries({ queryKey: [user.id], predicate: (q) =>
+            String(q.queryKey[1]).startsWith("/api/pages?") || String(q.queryKey[1]).startsWith("/api/connections?") || q.queryKey[1] === "page-system-users" });
+        }
+      } catch { /* Ignore malformed event metadata; regular refresh still works. */ }
       client.invalidateQueries({ queryKey: [user.id, "/api/overview"] });
       client.invalidateQueries({
         queryKey: [user.id],

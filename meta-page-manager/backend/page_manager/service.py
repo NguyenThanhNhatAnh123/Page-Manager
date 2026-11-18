@@ -249,7 +249,8 @@ class PageManager:
                     if (website:=url(raw.get('website'),forbidden=forbidden)):extra['website']=website
                     if type(raw.get('is_always_open')) is bool:extra['is_always_open']=raw['is_always_open']
                     followers=raw.get('followers_count')
-                    if type(followers) is int and followers>=0:extra['followers_count']=followers
+                    if type(followers) is int and followers>=0:
+                        extra['followers_count']=followers;extra['followers_observed_at']=now()
                     location=raw.get('location')
                     if isinstance(location,dict):
                         location={key:text(value,300,forbidden) if isinstance(value,str) else value for key,value in location.items() if key in ('city','country','state','street','zip','latitude','longitude') and (isinstance(value,str) or type(value) in (int,float) and math.isfinite(value))}

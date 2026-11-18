@@ -89,7 +89,8 @@ async fn login(State(app):State<App>,req:Request)->Result<Response,Failure> {
  if !unchanged {return Err(fail(StatusCode::UNAUTHORIZED,"Tài khoản đã thay đổi. Đăng nhập lại."))}
  let (raw,csrf)=new_session(&app,&id,&expected).await?;
  sqlx::query("DELETE FROM pm_login_limits WHERE key=$1 OR window_start<now()-interval '1 day'").bind(key).execute(&app.db).await.map_err(db_error)?;
- sqlx::query("INSERT INTO pm_sync_requests(user_id) VALUES($1) ON CONFLICT(user_id) DO UPDATE SET requested_at=now(),status=CASE WHEN pm_sync_requests.status='running' THEN 'running' ELSE 'pending' END").bind(&id).execute(&app.db).await.map_err(db_error)?;
+ let hours=env::var("PM_ANALYTICS_SYNC_HOURS").ok().and_then(|value|value.parse::<i32>().ok()).filter(|value|[12,24].contains(value)).unwrap_or(12);
+ sqlx::query("SELECT pm_request_sync($1,'login',$2)").bind(&id).bind(hours).execute(&app.db).await.map_err(db_error)?;
  let a=Actor{id,username:row.get("username"),role:row.get("role"),must_change:row.get("must_change"),timezone:row.get("timezone"),csrf,mcp:false,can_write:true};
  let mut response=axum::Json(json!({"user":a.public()})).into_response();response.headers_mut().insert(header::SET_COOKIE,cookie_header(&app,&raw,SESSION_LIFETIME_SECONDS));Ok(response)
 }

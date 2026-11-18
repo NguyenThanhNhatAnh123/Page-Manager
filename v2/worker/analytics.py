@@ -132,19 +132,31 @@ class Analytics:
         return status
 
     async def refresh(self):
+        from page_manager.inputs import PageRefresh
+        refreshed_pages=unavailable_pages=0
         with self.store.connect() as db:
             jobs=[dict(row) for row in db.execute("SELECT video_id,page_id,connection_id,caption,published_url,finished_at FROM reel_jobs WHERE status='completed' AND video_id IS NOT NULL")]
         for job in jobs:self.register(job['video_id'],job['page_id'],job['connection_id'],job['caption'],job['finished_at'],job['published_url'])
         offset=0
         while True:
             pages=self.manager.pages(limit=100,offset=offset)['items']
-            for page in pages:await self.discover(page);await asyncio.sleep(0)
+            for page in pages:
+                links=[connection for connection in page['connections'] if connection['status'] in ('working','unchecked')]
+                if links:
+                    try:
+                        snapshot=await self.manager.refresh(page['id'],PageRefresh(connection_id=links[0]['id'],include_posts=False))
+                        if snapshot.get('page',{}).get('error'):unavailable_pages+=1
+                        else:refreshed_pages+=1
+                    except Exception:unavailable_pages+=1
+                else:unavailable_pages+=1
+                await self.discover(page);await asyncio.sleep(0)
             if len(pages)<100:break
             offset+=100
         statuses=[]
         for target in self.known():
             statuses.append(await self.read(target));await asyncio.sleep(0)
-        return {'refreshed':sum(s!='unavailable' for s in statuses),'unavailable':sum(s!='available' for s in statuses)}
+        return {'refreshed':sum(s!='unavailable' for s in statuses),'unavailable':sum(s!='available' for s in statuses),
+                'refreshed_pages':refreshed_pages,'unavailable_pages':unavailable_pages}
 
     def page_summaries(self,page_ids):
         """Read card totals for the current catalog window, without Meta calls.

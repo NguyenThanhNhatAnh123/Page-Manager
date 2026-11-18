@@ -36,6 +36,7 @@ from .publication import DirectReelInput as TokenReelInput,DirectReelScheduler,e
 from page_manager.avatars import PageAvatars,AvatarUnavailable
 from .analytics import Analytics,ID
 from .catalog import ranked_pages,calendar_groups
+from .sync_schedule import interval_hours,enqueue_due
 
 
 def central():return psycopg.connect(os.environ['DATABASE_URL'],row_factory=dict_row,connect_timeout=5,prepare_threshold=None)
@@ -75,7 +76,7 @@ class Registry:
         self.workspaces={};self.sync_tasks={};self.page_locks={}
         self.publish_slots=asyncio.Semaphore(4);self.read_slots=asyncio.Semaphore(6);self.analytics_slots=asyncio.Semaphore(2)
         self.sync_slots=asyncio.Semaphore(2)
-        self.last_tick=0.;self.closing=False;self.error=False;self.lease=None
+        self.last_tick=0.;self.closing=False;self.error=False;self.lease=None;self.next_auto_check=0.
     def get(self,owner):
         if owner not in self.workspaces:self.workspaces[owner]=Workspace(owner,self)
         return self.workspaces[owner]
@@ -98,10 +99,10 @@ class Registry:
                         if not imminent:
                             with suppress(AppError):await workspace.manager.sync(connection['id'])
                 result=await workspace.analytics.refresh()
-            with central() as db:db.execute("UPDATE public.pm_sync_requests SET processed_at=%s,finished_at=now(),status='completed',refreshed=%s,unavailable=%s,message=NULL WHERE user_id=%s",(requested_at,result['refreshed'],result['unavailable'],owner))
+            with central() as db:db.execute("UPDATE public.pm_sync_requests SET processed_at=%s,finished_at=now(),next_auto_at=now()+%s*interval '1 hour',status='completed',refreshed=%s,unavailable=%s,message=%s WHERE user_id=%s",(requested_at,interval_hours(),result['refreshed'],result['unavailable'],'Một số chỉ số chưa đọc được; giữ số liệu gần nhất.' if result['unavailable'] or result.get('unavailable_pages') else None,owner))
         except asyncio.CancelledError:raise
         except Exception:
-            with central() as db:db.execute("UPDATE public.pm_sync_requests SET processed_at=%s,finished_at=now(),status='error',message='Chưa đồng bộ được. Kiểm tra kết nối và thử lại.' WHERE user_id=%s",(requested_at,owner))
+            with central() as db:db.execute("UPDATE public.pm_sync_requests SET processed_at=%s,finished_at=now(),next_auto_at=now()+%s*interval '1 hour',status='error',message='Chưa đồng bộ được. Kiểm tra kết nối và thử lại.' WHERE user_id=%s",(requested_at,interval_hours(),owner))
     async def run(self):
         while not self.closing:
             if self.lease is not None:
@@ -123,6 +124,9 @@ class Registry:
                 for user in users:
                     workspace=self.get(user['id']);workspace.scheduler.tick()
                     await asyncio.sleep(0)
+                if time.monotonic()>=self.next_auto_check:
+                    self.next_auto_check=time.monotonic()+60
+                    enqueue_due(central,{owner:workspace for owner,workspace in self.workspaces.items() if owner in active})
                 for request in pending:
                     owner=request['user_id'];task=self.sync_tasks.get(owner)
                     if task is None or task.done():
@@ -148,6 +152,7 @@ async def lifespan(app):
     if not lease.execute('SELECT pg_try_advisory_lock(80218021) AS locked').fetchone()['locked']:
         lease.close();raise RuntimeError('Another PageManager v2 worker already owns the scheduler')
     registry.lease=lease
+    with central() as db:db.execute("UPDATE public.pm_sync_requests SET status='pending',started_at=NULL WHERE status='running' AND requested_at>COALESCE(processed_at,'epoch'::timestamptz)")
     task=asyncio.create_task(registry.run())
     try:yield
     finally:
@@ -288,8 +293,8 @@ async def overview(request:Request):
 
 
 def sync_status(owner):
-    with central() as db:row=db.execute('SELECT requested_at,started_at,finished_at,status,message,refreshed,unavailable FROM public.pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()
-    return row or {'status':'never','refreshed':0,'unavailable':0}
+    with central() as db:row=db.execute('SELECT requested_at,started_at,finished_at,status,message,refreshed,unavailable,next_auto_at,reason FROM public.pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()
+    return (row or {'status':'never','refreshed':0,'unavailable':0})|{'interval_hours':interval_hours()}
 
 
 @app.get('/api/analytics')
@@ -299,8 +304,12 @@ async def analytics(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Q
 
 @app.post('/api/analytics/sync',status_code=202)
 async def analytics_sync(request:Request):
-    with central() as db:db.execute("INSERT INTO public.pm_sync_requests(user_id) VALUES(%s) ON CONFLICT(user_id) DO UPDATE SET requested_at=now(),status=CASE WHEN pm_sync_requests.status='running' THEN 'running' ELSE 'pending' END",(ws(request).owner,))
-    return {'accepted':True}
+    with central() as db:queued=db.execute("SELECT pm_request_sync(%s,'manual',%s) queued",(ws(request).owner,interval_hours())).fetchone()['queued']
+    return {'accepted':True,'queued':queued,'sync':sync_status(ws(request).owner)}
+
+
+@app.get('/api/analytics/sync')
+async def analytics_sync_status(request:Request):return {'sync':sync_status(ws(request).owner)}
 
 
 @app.get('/api/analytics/{video_id}/history')

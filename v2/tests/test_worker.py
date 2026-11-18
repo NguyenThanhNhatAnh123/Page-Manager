@@ -347,7 +347,7 @@ async def test_private_worker_and_mcp_are_scoped_and_secret_free(runtime,monkeyp
         assert refresh.status_code==202
         with psycopg.connect(os.environ['DATABASE_URL'],prepare_threshold=None) as db:
             after=dict(db.execute('SELECT user_id,requested_at FROM pm_sync_requests').fetchall())
-            assert owners[0] in after and (owners[0] not in before or after[owners[0]]>before[owners[0]])
+            assert owners[0] in after and (owners[0] not in before or after[owners[0]]>=before[owners[0]])
             assert {owner:stamp for owner,stamp in after.items() if owner!=owners[0]}=={owner:stamp for owner,stamp in before.items() if owner!=owners[0]}
         bad=await client.post('/api/connections',headers=headers,json={'label':'x','token_type':'system_user','token':'SECRET WITH SPACES'})
         assert bad.status_code==422 and 'SECRET WITH SPACES' not in bad.text
@@ -697,3 +697,66 @@ async def test_system_user_token_create_update_delete_never_returns_the_secret(r
         assert deleted.status_code==200 and secret not in deleted.text
         stored=registry.get(owners[6]).manager.store.connection(cid)
         assert stored['encrypted_token'] is None and not stored['connected']
+
+
+def test_periodic_sync_survives_long_sessions_and_coalesces_requests(runtime,monkeypatch):
+    from worker import app as module
+    from worker.sync_schedule import enqueue_due
+    registry,_,owners=runtime;owner=owners[15];workspace=registry.get(owner)
+    monkeypatch.setenv('PM_ANALYTICS_SYNC_HOURS','12')
+    with psycopg.connect(os.environ['DATABASE_URL'],prepare_threshold=None) as db:
+        db.execute('DELETE FROM pm_sync_requests WHERE user_id=%s',(owner,))
+        db.execute('DELETE FROM pm_sessions WHERE user_id=%s',(owner,))
+    assert enqueue_due(module.central,{owner:workspace})==1
+    with module.central() as db:
+        first=db.execute('SELECT * FROM pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()
+        assert first['reason']=='auto' and 43100<(first['next_auto_at']-first['requested_at']).total_seconds()<43300
+        assert db.execute("SELECT pm_request_sync(%s,'manual',12) queued",(owner,)).fetchone()['queued'] is False
+    assert enqueue_due(module.central,{owner:workspace})==0
+    with module.central() as db:
+        db.execute("UPDATE pm_sync_requests SET processed_at=requested_at,status='completed',finished_at=now()-interval '13 hours',next_auto_at=now()-interval '1 second' WHERE user_id=%s",(owner,))
+    assert enqueue_due(module.central,{owner:workspace})==1
+    with module.central() as db:
+        db.execute("UPDATE pm_sync_requests SET processed_at=requested_at,status='completed',finished_at=now(),next_auto_at=now()+interval '12 hours' WHERE user_id=%s",(owner,))
+        assert db.execute("SELECT pm_request_sync(%s,'manual',12) queued",(owner,)).fetchone()['queued'] is False
+        db.execute("UPDATE pm_sync_requests SET finished_at=now()-interval '61 seconds' WHERE user_id=%s",(owner,))
+        assert db.execute("SELECT pm_request_sync(%s,'manual',12) queued",(owner,)).fetchone()['queued'] is True
+    with module.central() as db:db.execute('DELETE FROM pm_sync_requests WHERE user_id=%s',(owner,))
+    monkeypatch.setenv('PM_ANALYTICS_SYNC_HOURS','24')
+    assert enqueue_due(module.central,{owner:workspace})==1
+    with module.central() as db:
+        row=db.execute('SELECT * FROM pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()
+        assert 86300<(row['next_auto_at']-row['requested_at']).total_seconds()<86500
+        db.execute('DELETE FROM pm_sync_requests WHERE user_id=%s',(owner,))
+        db.execute('UPDATE pm_users SET active=FALSE WHERE id=%s',(owner,))
+    try:assert enqueue_due(module.central,{owner:workspace})==0
+    finally:
+        with module.central() as db:db.execute('UPDATE pm_users SET active=TRUE WHERE id=%s',(owner,))
+
+
+async def test_full_sync_refreshes_followers_and_retains_last_value_on_failure(runtime):
+    from page_manager.graph import GraphError
+    from page_manager.inputs import PageRefresh
+    registry,_,owners=runtime;workspace=registry.get(owners[9]);manager=workspace.manager
+    class Graph:
+        async def __aenter__(self):return self
+        async def __aexit__(self,*_):pass
+        async def details(self,token,pid):return {'id':pid,'name':'Follower fixture','followers_count':870},None
+        async def identity(self,token):return {'id':'555'}
+        async def get(self,path,token,params=None):
+            if path.endswith('/videos'):return {'data':[]}
+            if params and params.get('fields')=='id,from':return {'id':path,'from':{'id':'555'}}
+            return {'data':[],'summary':{}}
+    original=manager.graph_factory;manager.graph_factory=Graph
+    try:
+        await workspace.analytics.refresh()
+        page=manager.page('555')['page']
+        assert page['details']['followers_count']==870
+        observed=page['details']['followers_observed_at'];assert observed
+        class Unavailable(Graph):
+            async def details(self,token,pid):raise GraphError('rate_limited')
+        manager.graph_factory=Unavailable
+        await manager.refresh('555',PageRefresh(connection_id=1,include_posts=False))
+        latest=manager.page('555')['page']
+        assert latest['details']['followers_count']==870 and latest['details']['followers_observed_at']==observed
+    finally:manager.graph_factory=original

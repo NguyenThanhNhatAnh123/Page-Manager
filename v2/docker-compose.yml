@@ -10,6 +10,7 @@ services:
       PM_PUBLIC_ORIGIN: ${PM_PUBLIC_ORIGIN:-http://127.0.0.1:8020}
       PM_COOKIE_SECURE: ${PM_COOKIE_SECURE:-false}
       PM_GRAPH_VERSION: ${PM_GRAPH_VERSION:-v26.0}
+      PM_ANALYTICS_SYNC_HOURS: ${PM_ANALYTICS_SYNC_HOURS:-12}
     ports:
       - "127.0.0.1:8020:8020"
     volumes:

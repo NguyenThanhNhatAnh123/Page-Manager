@@ -30,6 +30,25 @@ CREATE TABLE IF NOT EXISTS pm_sync_requests (
  status TEXT NOT NULL DEFAULT 'pending', message TEXT, refreshed INTEGER NOT NULL DEFAULT 0,
  unavailable INTEGER NOT NULL DEFAULT 0
 );
+ALTER TABLE pm_sync_requests ADD COLUMN IF NOT EXISTS next_auto_at TIMESTAMPTZ;
+ALTER TABLE pm_sync_requests ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT 'login';
+CREATE OR REPLACE FUNCTION pm_request_sync(owner_id TEXT,request_reason TEXT DEFAULT 'manual',hours INTEGER DEFAULT 12)
+RETURNS BOOLEAN LANGUAGE plpgsql AS $$
+DECLARE changed INTEGER;
+BEGIN
+ IF hours NOT IN (12,24) THEN hours:=12; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.pm_users WHERE id=owner_id AND active) THEN RETURN FALSE; END IF;
+ INSERT INTO public.pm_sync_requests(user_id,reason,next_auto_at)
+ VALUES(owner_id,request_reason,now()+hours*interval '1 hour')
+ ON CONFLICT(user_id) DO UPDATE SET requested_at=now(),reason=EXCLUDED.reason,status='pending',message=NULL,
+ next_auto_at=now()+hours*interval '1 hour'
+ WHERE pm_sync_requests.requested_at<=COALESCE(pm_sync_requests.processed_at,'epoch'::timestamptz)
+ AND (request_reason<>'auto' OR COALESCE(pm_sync_requests.next_auto_at,
+      pm_sync_requests.finished_at+hours*interval '1 hour',pm_sync_requests.requested_at+hours*interval '1 hour')<=now())
+ AND (request_reason='auto' OR pm_sync_requests.finished_at IS NULL OR pm_sync_requests.finished_at<now()-interval '60 seconds');
+ GET DIAGNOSTICS changed=ROW_COUNT;
+ RETURN changed>0;
+END $$;
 CREATE TABLE IF NOT EXISTS pm_audit (
  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  user_id TEXT REFERENCES pm_users(id), action TEXT NOT NULL,
