@@ -26,7 +26,7 @@ def accounts():
 
 
 async def login(username):
-    client=httpx.AsyncClient(base_url=URL,headers={'Origin':URL},timeout=30)
+    client=httpx.AsyncClient(base_url=URL,headers={'Origin':URL},timeout=30,trust_env=False)
     response=await client.post('/api/auth/login',json={'username':username,'password':PASSWORD})
     assert response.status_code==200,response.text
     user=response.json()['user'];client.headers['X-CSRF-Token']=user['csrf_token']
@@ -57,7 +57,7 @@ async def test_csrf_owner_admin_and_mcp_scopes(accounts):
         assert created.status_code==200
         token=created.json()
         assert (await other.delete('/api/account/mcp-tokens/'+token['id'])).status_code==404
-        async with httpx.AsyncClient(base_url=URL,headers={'Authorization':'Bearer '+token['token']}) as mcp:
+        async with httpx.AsyncClient(base_url=URL,timeout=30,trust_env=False,headers={'Authorization':'Bearer '+token['token']}) as mcp:
             tools=await mcp.post('/mcp',json={'jsonrpc':'2.0','id':1,'method':'tools/list'})
             assert tools.status_code==200
             names={t['name'] for t in tools.json()['result']['tools']}
@@ -75,7 +75,7 @@ async def test_full_mcp_defaults_upgrade_and_upload_are_owner_scoped(accounts):
         assert response.status_code==200
         token=response.json();assert token['can_write'] is True
         assert (await other.patch('/api/account/mcp-tokens/'+token['id'],json={'can_write':False})).status_code==404
-        async with httpx.AsyncClient(base_url=URL,headers={'Authorization':'Bearer '+token['token']}) as mcp:
+        async with httpx.AsyncClient(base_url=URL,timeout=30,trust_env=False,headers={'Authorization':'Bearer '+token['token']}) as mcp:
             listed=await mcp.post('/mcp',json={'jsonrpc':'2.0','id':1,'method':'tools/list'})
             names={t['name'] for t in listed.json()['result']['tools']}
             assert {'pages_manage','pages_connection_create','pages_reel_now'}<=names
@@ -123,7 +123,7 @@ async def test_all_twenty_sessions_and_mcp_ignore_client_selected_workspace(acco
     tokens=[]
     operation=str(uuid5(NAMESPACE_DNS,'tenant-isolation-shared-operation'))
     try:
-        async with httpx.AsyncClient(base_url=URL) as anonymous:
+        async with httpx.AsyncClient(base_url=URL,timeout=30,trust_env=False) as anonymous:
             assert (await anonymous.get('/api/pages',headers={'X-PM-Workspace':accounts[0][0],'X-PM-Internal':'forged'})).status_code==401
         for index,(client,user) in enumerate(results):
             forged={'X-PM-Workspace':accounts[(index+1)%20][0],'X-PM-Internal':'forged','X-PM-Capability':'write'}
@@ -143,7 +143,7 @@ async def test_all_twenty_sessions_and_mcp_ignore_client_selected_workspace(acco
             client=results[index][0]
             token=(await client.post('/api/account/mcp-tokens',json={'label':'Tenant boundary QA','days':1})).json()
             tokens.append((client,token['id']))
-            async with httpx.AsyncClient(base_url=URL,headers={'Authorization':'Bearer '+token['token'],'X-PM-Workspace':accounts[2][0],'X-PM-Internal':'forged'}) as mcp:
+            async with httpx.AsyncClient(base_url=URL,timeout=30,trust_env=False,headers={'Authorization':'Bearer '+token['token'],'X-PM-Workspace':accounts[2][0],'X-PM-Internal':'forged'}) as mcp:
                 response=await mcp.post('/mcp',json={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'via_operation_status','arguments':{'operation_id':operation}}})
                 result=response.json()['result'];assert not result['isError']
                 job=json.loads(result['content'][0]['text'])['job']
@@ -163,7 +163,7 @@ async def test_disabling_one_owner_revokes_only_their_sessions_and_tokens(accoun
     target=next(owner_id for owner_id,username in accounts if username=='test_user19')
     try:
         token=(await owner.post('/api/account/mcp-tokens',json={'label':'Revocation QA','days':1})).json()
-        async with httpx.AsyncClient(base_url=URL,headers={'Authorization':'Bearer '+token['token']}) as mcp:
+        async with httpx.AsyncClient(base_url=URL,timeout=30,trust_env=False,headers={'Authorization':'Bearer '+token['token']}) as mcp:
             assert (await mcp.post('/mcp',json={'jsonrpc':'2.0','id':1,'method':'ping'})).status_code==200
             locked=await admin.patch('/api/admin/users/'+target,json={'active':False})
             assert locked.status_code==200,locked.text

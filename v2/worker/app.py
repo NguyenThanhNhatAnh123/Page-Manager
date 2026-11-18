@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse,FileResponse,StreamingResponse,Respon
 from pydantic import BaseModel,ConfigDict,Field
 
 ROOT=Path(__file__).resolve().parents[1]
-load_dotenv(ROOT/'.env')
+if os.environ.get('PM_NATIVE_RUNTIME')!='1':load_dotenv(ROOT/'.env')
 sys.path.insert(0,str(ROOT.parent/'meta-page-manager'/'backend'))
 from page_manager.service import PageManager
 from page_manager.errors import AppError

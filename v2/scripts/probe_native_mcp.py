@@ -10,12 +10,13 @@ import subprocess
 import sys
 
 import httpx
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.private_files import private
+from scripts.dev_windows import running
 
 STATE = ROOT / '.runtime/native-dev'
 BASE = 'http://127.0.0.1:8020'
@@ -68,6 +69,12 @@ def setup():
         login_file = STATE / 'admin-login.txt'
         login_file.write_text('LOCAL NATIVE DEV ONLY\nURL: ' + BASE + '\nUsername: admin\nPassword: ' + data['password'] + '\n', encoding='utf-8')
         private(login_file)
+        if data.get('mcp_token'):
+            probe=client.post('/mcp',headers={'Authorization':'Bearer '+data['mcp_token']},json={'jsonrpc':'2.0','id':0,'method':'ping'})
+            if probe.status_code==401:
+                if data.get('mcp_token_id'):client.delete('/api/account/mcp-tokens/'+data['mcp_token_id'])
+                data.pop('mcp_token',None)
+            else:checked(probe)
         if not data.get('mcp_token'):
             created = checked(client.post('/api/account/mcp-tokens', json={'label': 'Native Windows dev CLI test', 'days': 1, 'can_write': True}))
             if created.get('can_write') is not True:
@@ -163,7 +170,8 @@ if __name__ == '__main__':
     mode = parser.parse_args().operation
     WORK.mkdir(parents=True, exist_ok=True); private(WORK)
     try:
+        if not running():raise ValueError('Start the dedicated native dev runtime before probing MCP.')
         BOX = Fernet(dotenv_values(STATE / 'dev.env')['PM_ENCRYPTION_KEY'].encode())
         setup() if mode == 'setup' else probe_client(mode)
-    except (OSError, ValueError, KeyError, httpx.HTTPError, subprocess.SubprocessError):
+    except (OSError, ValueError, KeyError, InvalidToken, httpx.HTTPError, subprocess.SubprocessError):
         raise SystemExit('Private native MCP probe failed; no credentials were printed.') from None

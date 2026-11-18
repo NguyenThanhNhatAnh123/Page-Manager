@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import urllib.request
+from urllib.parse import urlsplit, unquote, quote
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -108,6 +109,18 @@ def stop_child(child, worker=False):
         child.kill(); child.wait(timeout=10)
 
 
+def native_environment(values, worker_module='worker.app:app'):
+    allowed = {'SYSTEMROOT', 'WINDIR', 'PATH', 'PATHEXT', 'TEMP', 'TMP', 'USERPROFILE',
+               'APPDATA', 'LOCALAPPDATA', 'COMSPEC', 'SYSTEMDRIVE', 'HOMEDRIVE', 'HOMEPATH',
+               'USERNAME', 'USERDOMAIN', 'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE'}
+    environment = {key: value for key, value in os.environ.items() if key.upper() in allowed}
+    environment.update(values)
+    environment.update(PYTHONUNBUFFERED='1', PYTHONUTF8='1', PM_NATIVE_RUNTIME='1', NO_PROXY='127.0.0.1,localhost')
+    if worker_module != 'worker.app:app':
+        environment['PM_TEST_DATABASE_URL'] = values['DATABASE_URL']
+    return environment
+
+
 def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
     from dotenv import dotenv_values
     from scripts.provision import provision
@@ -125,7 +138,8 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
     handler = RotatingFileHandler(log_dir / 'runtime.log', maxBytes=10 * 1024 * 1024, backupCount=5, encoding='utf-8')
     handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
     log.addHandler(handler)
-    secret_values = [values[key] for key in ('DATABASE_URL', 'PM_INTERNAL_KEY', 'PM_ENCRYPTION_KEY')]
+    password = unquote(urlsplit(values['DATABASE_URL']).password or '')
+    secret_values = [value for value in [values[key] for key in ('DATABASE_URL', 'PM_INTERNAL_KEY', 'PM_ENCRYPTION_KEY')] + [password, quote(password, safe='')] if value]
     def relay(name, pipe):
         for line in pipe:
             for secret in secret_values:
@@ -139,8 +153,8 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
                     probe.bind(('127.0.0.1', port))
                 except OSError:
                     raise RuntimeError(f'Port {port} is already occupied. Stop the existing deployment first.') from None
-        environment = {**os.environ, **values, 'PYTHONUNBUFFERED': '1', 'PYTHONUTF8': '1'}
-        os.environ.update(values)
+        environment = native_environment(values, worker_module)
+        os.environ.clear(); os.environ.update(environment)
         allocated_console = False
         kernel = ctypes.WinDLL('kernel32', use_last_error=True)
         kernel.GetConsoleWindow.restype = ctypes.c_void_p
@@ -203,7 +217,7 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
             log.error('%s: %s', type(error).__name__, detail)
             raise
         finally:
-            for index, child in enumerate(children):
+            for index, child in reversed(list(enumerate(children))):
                 stop_child(child, worker=index == 0)
             job.close()
             for thread in relays:

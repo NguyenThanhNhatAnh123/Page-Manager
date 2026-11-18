@@ -9,6 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.native_runtime import WindowsJob
+from scripts.native_runtime import native_environment
 
 spec = importlib.util.spec_from_file_location('native_config', ROOT / 'server/windows/configure.py')
 config = importlib.util.module_from_spec(spec)
@@ -44,6 +45,38 @@ def test_caddy_configuration_routes_only_to_loopback_and_keeps_state_private(tmp
     assert 'flush_interval -1' in text and 'admin off' in text and 'roll_keep 5' in text
     with pytest.raises(ValueError):
         config.caddy_configuration(Path('/bad"path'))
+
+
+def test_native_children_ignore_inherited_cloud_proxy_and_python_settings(monkeypatch):
+    for key,value in {'DATABASE_URL':'cloud-db','PM_NATIVE_SERVER':'1','PYTHONPATH':'foreign-modules',
+                      'HTTPS_PROXY':'http://proxy.invalid','META_APP_SECRET':'foreign-secret','PM_TEST_DATABASE_URL':'foreign-test'}.items():
+        monkeypatch.setenv(key,value)
+    values={'DATABASE_URL':'postgresql://local/dev','PM_INTERNAL_KEY':'test-key'}
+    environment=native_environment(values)
+    assert environment['DATABASE_URL']==values['DATABASE_URL'] and environment['PM_NATIVE_RUNTIME']=='1'
+    assert all(key not in environment for key in ('PM_NATIVE_SERVER','PYTHONPATH','HTTPS_PROXY','META_APP_SECRET','PM_TEST_DATABASE_URL'))
+    assert native_environment(values,'tests.runtime_server:app')['PM_TEST_DATABASE_URL']==values['DATABASE_URL']
+
+
+@pytest.mark.parametrize('existing',['postgres/PG_VERSION','data'])
+def test_dev_missing_configuration_never_replaces_keys_for_existing_data(tmp_path,monkeypatch,existing):
+    from scripts import dev_windows as dev
+    state=tmp_path/'state';state.mkdir()
+    target=state/existing;target.parent.mkdir(parents=True,exist_ok=True)
+    if existing=='data':target.mkdir()
+    else:target.write_text('18')
+    tools=tmp_path/'tools';tools.mkdir();(tools/'pg_ctl.exe').touch()
+    monkeypatch.setattr(dev,'STATE',state);monkeypatch.setattr(dev,'PG_DATA',state/'postgres');monkeypatch.setattr(dev,'PG_BIN',tools)
+    with pytest.raises(RuntimeError,match='Nothing was reset'):dev.prepare()
+    assert not (state/'dev.env').exists()
+
+
+def test_dev_prefers_freshly_built_release_over_bundled_gateway(tmp_path,monkeypatch):
+    from scripts import dev_windows as dev
+    release=tmp_path/'gateway/target/release/pagemanager-gateway.exe';release.parent.mkdir(parents=True);release.touch()
+    bundle=tmp_path/'bin/pagemanager-gateway.exe';bundle.parent.mkdir();bundle.touch()
+    monkeypatch.setattr(dev,'ROOT',tmp_path)
+    assert dev.gateway_path()==release
 
 
 @pytest.mark.skipif(sys.platform != 'win32', reason='Windows process-job integration')

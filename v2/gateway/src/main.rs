@@ -223,13 +223,13 @@ async fn health(State(app):State<App>)->Response {
 #[tokio::main]
 async fn main()->Result<(),Box<dyn std::error::Error>> {
  if env::args().any(|arg|arg=="--version") {println!("PageManager gateway {}",env!("CARGO_PKG_VERSION"));return Ok(())}
- dotenvy::dotenv().ok();
+ if env::var("PM_NATIVE_RUNTIME").as_deref()!=Ok("1") {dotenvy::dotenv().ok();}
  let db=PgPoolOptions::new().max_connections(12).connect(&env::var("DATABASE_URL")?).await?;
  sqlx::raw_sql(include_str!("../../migrations/001.sql")).execute(&db).await?;
  let origin=env::var("PM_PUBLIC_ORIGIN").unwrap_or("http://127.0.0.1:8020".into());
  let key=env::var("PM_INTERNAL_KEY")?;if key.len()<48{return Err("PM_INTERNAL_KEY must be at least 48 characters".into())}
  let dummy=Argon2::default().hash_password(secret().as_bytes(),&SaltString::generate(&mut OsRng)).map_err(|_|std::io::Error::other("Password hasher unavailable"))?.to_string();
- let app=App{db,client:reqwest::Client::builder().timeout(Duration::from_secs(900)).redirect(reqwest::redirect::Policy::none()).build()?,worker:env::var("PM_WORKER_URL").unwrap_or("http://127.0.0.1:8021".into()),key,origin,secure:env::var("PM_COOKIE_SECURE").is_ok_and(|v|v=="true"),passwords:Arc::new(tokio::sync::Semaphore::new(4)),dummy};
+ let app=App{db,client:reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(900)).redirect(reqwest::redirect::Policy::none()).build()?,worker:env::var("PM_WORKER_URL").unwrap_or("http://127.0.0.1:8021".into()),key,origin,secure:env::var("PM_COOKIE_SECURE").is_ok_and(|v|v=="true"),passwords:Arc::new(tokio::sync::Semaphore::new(4)),dummy};
  let frontend=env::var("PM_FRONTEND_DIR").unwrap_or("frontend/dist".into());
  let router=Router::new().route("/healthz",get(health)).route("/api/auth/login",post(login)).route("/api/auth/{*path}",any(auth_routes)).route("/api/account/mcp-tokens",any(account)).route("/api/account/mcp-tokens/{id}",any(account)).route("/api/admin/users",any(admin)).route("/api/admin/users/{id}",any(admin)).route("/api/{*path}",any(proxy)).route("/mcp",post(proxy)).fallback_service(ServeDir::new(&frontend).not_found_service(ServeFile::new(format!("{frontend}/index.html")))).with_state(app)
  .layer(axum::middleware::map_response(|mut response:Response|async move {

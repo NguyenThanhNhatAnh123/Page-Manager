@@ -50,7 +50,7 @@ def running():
 
 
 def gateway_path():
-    for relative in ('bin/pagemanager-gateway.exe', 'gateway/target/release/pagemanager-gateway.exe',
+    for relative in ('gateway/target/release/pagemanager-gateway.exe', 'bin/pagemanager-gateway.exe',
                      'gateway/target/debug/pagemanager-gateway.exe'):
         path = ROOT / relative
         if path.is_file():
@@ -67,6 +67,8 @@ def prepare():
         raise RuntimeError('Official portable PostgreSQL required under .tools/postgres/pgsql.')
     config = STATE / 'dev.env'
     if not config.exists():
+        if (PG_DATA / 'PG_VERSION').exists() or (STATE / 'data').exists():
+            raise RuntimeError('Existing dev data has no dev.env; restore its configuration and encryption key. Nothing was reset.')
         password = secrets.token_hex(32)
         settings = {
             'DATABASE_URL': f'postgresql://pm_native_dev:{password}@127.0.0.1:{PORT}/pagemanager_dev',
@@ -114,6 +116,7 @@ def start():
         raise RuntimeError('Dev runtime is still starting/stopping; inspect its private logs.')
     STATE.mkdir(parents=True, exist_ok=True); private(STATE)
     gateway = gateway_path()
+    print('Native dev gateway: ' + str(gateway))
     command([gateway, '--version'])
     for port in (8020, 8021):
         with socket.socket() as probe:
@@ -124,14 +127,17 @@ def start():
         child = subprocess.Popen([sys.executable, str(ROOT / 'scripts/native_runtime.py'),
                                   '--config', str(STATE / 'dev.env'), '--gateway', str(gateway), '--state-dir', str(STATE)],
                                  cwd=ROOT, stdout=output, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
-    (STATE / 'runtime.json').write_text(json.dumps({'pid': child.pid, 'mode': 'native-windows-dev', 'url': 'http://127.0.0.1:8020'}))
+    (STATE / 'runtime.json').write_text(json.dumps({'pid': child.pid, 'gateway': str(gateway), 'mode': 'native-windows-dev', 'url': 'http://127.0.0.1:8020'}))
     for _ in range(100):
         if child.poll() is not None:
             raise RuntimeError('Dev runtime exited. Inspect .runtime/native-dev/logs/runtime.log.')
         if ready('http://127.0.0.1:8020/healthz'):
             print('Native Windows dev ready: http://127.0.0.1:8020'); return
         time.sleep(1)
-    raise RuntimeError('Dev readiness timed out. Inspect private logs before retrying.')
+    (STATE / 'stop.request').write_text('stop')
+    try:child.wait(timeout=70)
+    except subprocess.TimeoutExpired:pass
+    raise RuntimeError('Dev readiness timed out; stop requested. Inspect private logs before retrying.')
 
 
 def stop():
