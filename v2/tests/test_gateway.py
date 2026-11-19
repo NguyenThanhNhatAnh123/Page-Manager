@@ -1,5 +1,6 @@
 """Run against a built Rust gateway and a disposable, preseeded test DB."""
 import asyncio
+import base64
 import hashlib
 import os
 import httpx
@@ -7,7 +8,9 @@ import psycopg
 import pytest
 from argon2 import PasswordHasher
 import json
-from uuid import uuid5,NAMESPACE_DNS
+from uuid import uuid4,uuid5,NAMESPACE_DNS
+from io import BytesIO
+from PIL import Image
 
 URL=os.environ.get('PM_TEST_GATEWAY_URL')
 pytestmark=pytest.mark.skipif(not URL,reason='Requires a built Rust gateway; see CI workflow')
@@ -229,3 +232,46 @@ async def test_account_crud_archives_workspaces_and_mcp_token_labels_are_owner_s
                 for row in statuses:
                     db.execute(sql.SQL('UPDATE {}.reel_jobs SET status=%s WHERE id=%s').format(sql.Identifier(namespace)),(row['status'],row['id']))
         await admin.aclose();await victim.aclose()
+
+
+async def test_image_upload_streams_above_json_limit_and_respects_token_and_workspace_scopes(accounts):
+    owner,_=await login('test_user08')
+    other,_=await login('test_user09')
+    created=[]
+    output=BytesIO()
+    Image.frombytes('RGB',(256,256),os.urandom(256*256*3)).save(output,format='PNG')
+    raw=output.getvalue()
+    assert len(raw)>128_000
+    try:
+        owner_token=(await owner.post('/api/account/mcp-tokens',json={'label':'Image writer QA','days':1})).json()
+        reader_token=(await owner.post('/api/account/mcp-tokens',json={'label':'Image reader QA','can_write':False,'days':1})).json()
+        other_token=(await other.post('/api/account/mcp-tokens',json={'label':'Image other QA','days':1})).json()
+        created=[(owner,owner_token['id']),(owner,reader_token['id']),(other,other_token['id'])]
+        async with httpx.AsyncClient(base_url=URL,timeout=30,trust_env=False) as client:
+            async def rpc(token,name,arguments):
+                response=await client.post('/mcp',headers={'Authorization':'Bearer '+token},json={
+                    'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':name,'arguments':arguments}})
+                assert response.status_code==200
+                return response.json()
+            headers={'Authorization':'Bearer '+owner_token['token'],'Content-Type':'image/png','X-PM-Workspace':accounts[9][0]}
+            response=await client.post('/api/page-images',headers=headers,content=raw)
+            assert response.status_code==201
+            image=response.json()['image']
+            assert len(image['id'])==64 and image['size']==len(raw) and 'path' not in image
+            direct=await rpc(owner_token['token'],'pages_images_upload',{'mime':'image/png','image_base64':base64.b64encode(raw).decode('ascii')})
+            assert direct['result']['isError'] is False
+            assert json.loads(direct['result']['content'][0]['text'])['image']['id']==image['id']
+            mine=await rpc(owner_token['token'],'pages_images_list',{})
+            foreign=await rpc(other_token['token'],'pages_images_list',{})
+            assert image['id'] in {row['id'] for row in json.loads(mine['result']['content'][0]['text'])['items']}
+            assert image['id'] not in {row['id'] for row in json.loads(foreign['result']['content'][0]['text'])['items']}
+            denied=await client.post('/api/page-images',headers={'Authorization':'Bearer '+reader_token['token'],'Content-Type':'image/png'},content=raw)
+            assert denied.status_code==403
+            arguments={'page_id':'555','connection_id':1,'request_id':str(uuid4()),'image_id':image['id'],'kind':'avatar'}
+            assert 'error' in await rpc(reader_token['token'],'pages_edit_image',arguments)
+            foreign_apply=await rpc(other_token['token'],'pages_edit_image',arguments)
+            assert foreign_apply['result']['isError'] is True
+    finally:
+        for session,token_id in created:
+            await session.delete('/api/account/mcp-tokens/'+token_id)
+        await owner.aclose();await other.aclose()

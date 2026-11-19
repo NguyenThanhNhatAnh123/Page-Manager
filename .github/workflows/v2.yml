@@ -63,7 +63,7 @@ jobs:
       - name: Test shared Graph, Page and Reel behavior with fake data
         working-directory: meta-page-manager
         run: |
-          python -m pytest tests/test_graph.py tests/test_service.py tests/test_connection_revisions.py tests/test_secrets.py tests/test_page_management.py tests/test_page_information_status.py tests/test_page_edits.py tests/test_page_bio_read.py tests/test_page_contact_fields.py tests/test_token_reel_inputs.py tests/test_token_reel_assets.py tests/test_token_reel_scheduler.py -q -o asyncio_mode=auto -o asyncio_default_fixture_loop_scope=function
+          python -m pytest tests/test_graph.py tests/test_service.py tests/test_connection_revisions.py tests/test_secrets.py tests/test_page_management.py tests/test_page_information_status.py tests/test_page_edits.py tests/test_images.py tests/test_page_bio_read.py tests/test_page_contact_fields.py tests/test_token_reel_inputs.py tests/test_token_reel_assets.py tests/test_token_reel_scheduler.py -q -o asyncio_mode=auto -o asyncio_default_fixture_loop_scope=function
           exit $LASTEXITCODE
       - name: Build Rust gateway with the pinned compiler
         run: |

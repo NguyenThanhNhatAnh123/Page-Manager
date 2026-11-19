@@ -237,7 +237,7 @@ async fn proxy(State(app):State<App>,req:Request)->Result<Response,Failure> {
   let reel_id=parts.get(2).and_then(|s|s.parse::<u64>().ok()).is_some_and(|id|id>0);
   let page_id=parts.get(2).is_some_and(|id|!id.is_empty()&&id.len()<=32&&id.bytes().all(|b|b.is_ascii_digit()));
   let allowed=(req.method()==Method::POST && ["/api/reels","/api/reels/now","/api/analytics/sync"].contains(&path.as_str()))
-   || (req.method()==Method::POST && ["/api/connections","/api/reels/assets"].contains(&path.as_str()))
+   || (req.method()==Method::POST && ["/api/connections","/api/reels/assets","/api/page-images"].contains(&path.as_str()))
    || (parts.first()==Some(&"api") && parts.get(1)==Some(&"connections") && reel_id &&
       ((parts.len()==3 && [Method::PUT,Method::DELETE].contains(req.method())) || (parts.len()==4 && req.method()==Method::POST && ["check","sync","disconnect"].contains(&parts[3]))))
    || (parts.first()==Some(&"api") && parts.get(1)==Some(&"pages") && page_id &&
@@ -249,10 +249,11 @@ async fn proxy(State(app):State<App>,req:Request)->Result<Response,Failure> {
  let method=req.method().clone();let route=req.uri().path_and_query().map(|p|p.as_str()).unwrap_or("/").to_owned();
  let mut upstream=app.client.request(method.clone(),format!("{}{}",app.worker,route)).header("x-pm-internal",&app.key).header("x-pm-workspace",&a.id).header("x-pm-capability",if a.can_write{"write"}else{"read"});
  for name in ["content-type","content-length","x-filename","range","if-range","accept"] {if let Some(value)=req.headers().get(name){upstream=upstream.header(name,value);}}
- let request_body=if path=="/api/reels/assets" && method==Method::POST {
+ let request_body=if ["/api/reels/assets","/api/page-images"].contains(&path.as_str()) && method==Method::POST {
   reqwest::Body::wrap_stream(req.into_body().into_data_stream())
  } else {
-  let bytes=to_bytes(req.into_body(),128_000).await.map_err(|_|fail(StatusCode::PAYLOAD_TOO_LARGE,"Dữ liệu quá lớn."))?;
+  let limit=if path=="/mcp"&&a.can_write {12*1024*1024}else{128_000};
+  let bytes=to_bytes(req.into_body(),limit).await.map_err(|_|fail(StatusCode::PAYLOAD_TOO_LARGE,"Dữ liệu quá lớn."))?;
   reqwest::Body::from(bytes)
  };
  let result=upstream.body(request_body).send().await.map_err(|error|{
