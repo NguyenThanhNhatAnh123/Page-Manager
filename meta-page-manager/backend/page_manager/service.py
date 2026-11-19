@@ -396,7 +396,10 @@ class PageManager:
                 outcome='unknown';message='Chưa xác định Meta đã áp dụng thay đổi hay chưa. Không tự gửi lại; cập nhật và kiểm tra Page trước.'
             except GraphError as error:
                 outcome='partial' if uploaded else 'failed'
-                message='Ảnh đã tải lên Meta nhưng chưa áp dụng xong cho Page. Không tự tải lại; kiểm tra Page trước.' if uploaded else str(error)
+                reason=('Meta từ chối quyền chỉnh sửa Page của nguồn đã chọn.'
+                        if attempted and error.status=='permission_limited' else str(error))
+                message=('Ảnh đã tải lên Meta nhưng chưa áp dụng xong cho Page. '+reason+
+                         ' Không tự tải lại; kiểm tra Page trước.') if uploaded else reason
             except AppError:
                 outcome='unknown' if attempted else 'failed'
                 message='Kết nối đã thay đổi trong lượt chỉnh sửa. Kiểm tra Page trước khi tạo yêu cầu mới.'

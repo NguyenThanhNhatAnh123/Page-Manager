@@ -38,6 +38,7 @@ from page_manager.avatars import PageAvatars,AvatarUnavailable
 from .analytics import Analytics,ID
 from .catalog import ranked_pages,calendar_groups
 from .sync_schedule import interval_hours,enqueue_due
+from .page_images import PageImageCache
 
 
 def central():return psycopg.connect(os.environ['DATABASE_URL'],row_factory=dict_row,connect_timeout=5,prepare_threshold=None)
@@ -69,6 +70,8 @@ class Workspace:
         self.scheduler.capacity=registry.publish_slots
         self.analytics=Analytics(self.manager,registry.analytics_slots)
         self.avatars=PageAvatars(self.manager)
+        self.invalidate_avatar=registry.invalidate_avatar
+        self.images=PageImageCache(self.root,capacity=registry.image_slots)
         self.lock=asyncio.Lock();self.sync_lock=asyncio.Lock()
 
 
@@ -76,11 +79,14 @@ class Registry:
     def __init__(self):
         self.workspaces={};self.sync_tasks={};self.page_locks={}
         self.publish_slots=asyncio.Semaphore(4);self.read_slots=asyncio.Semaphore(6);self.analytics_slots=asyncio.Semaphore(2)
+        self.image_slots=asyncio.Semaphore(2)
         self.sync_slots=asyncio.Semaphore(2)
         self.last_tick=0.;self.closing=False;self.error=False;self.lease=None;self.next_auto_check=0.
     def get(self,owner):
         if owner not in self.workspaces:self.workspaces[owner]=Workspace(owner,self)
         return self.workspaces[owner]
+    def invalidate_avatar(self,page_id):
+        for workspace in self.workspaces.values():workspace.avatars.invalidate(page_id)
     async def sync(self,workspace,requested_at):
         # Concurrent logins remain durable, while only two owner refreshes may
         # compete with interactive requests and scheduler ticks at once.
@@ -354,6 +360,14 @@ async def assets(request:Request,limit:int=Query(24,ge=1,le=100),offset:int=Quer
         rows=[workspace.assets.public(dict(row)) for row in db.execute("SELECT * FROM reel_assets WHERE lower(name) LIKE ? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",('%'+search.lower()+'%',limit,offset))]
         total=db.execute('SELECT COUNT(*) FROM reel_assets WHERE lower(name) LIKE ?',('%'+search.lower()+'%',)).fetchone()[0]
     return {'assets':rows,'total':total,'limit':limit,'offset':offset}
+
+
+@app.post('/api/page-images',status_code=201)
+async def upload_page_image(request:Request):
+    length=request.headers.get('content-length')
+    try:length=int(length) if length else None
+    except ValueError:raise AppError('Dung lượng ảnh không hợp lệ.','invalid_image_size',422) from None
+    return {'image':await ws(request).images.ingest(request.stream(),request.headers.get('content-type'),length)}
 
 
 @app.post('/api/reels/assets',status_code=201)

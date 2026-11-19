@@ -43,6 +43,14 @@ AGENT_INSTRUCTIONS = (
     'Nếu đổi danh mục theo tên, tra ID bằng pages_categories; không tự đoán ID hoặc tên tương đương. '
     'outcome=accepted chỉ xác nhận Meta tiếp nhận; đọc lại bằng pages_edit_options để kiểm tra giá trị. '
     'Nếu outcome=failed/unknown/partial, báo đúng kết quả và không tự tạo request_id mới để gửi lại.'
+    ' Đổi avatar/ảnh bìa: tải JPEG/PNG từ máy khách bằng pages_images_upload (base64 do client mã hóa, không in trong chat), '
+    'hoặc dùng pages_images_upload_info để tải byte ảnh qua HTTP bằng cùng MCP token; '
+    'sau đó gọi pages_edit_image với image_id, kind avatar/cover, Page, nguồn và UUID cố định. '
+    'Không dùng đường dẫn file trên server hoặc tự tải URL ảnh bên ngoài. Không cần mở Facebook trong trình duyệt cho luồng API này. '
+    'Nếu mất phản hồi, đọc pages_edit_image_status; giữ UUID và không tự tải ảnh/gửi Meta lần nữa khi kết quả chưa rõ. '
+    'Sau accepted, đối chiếu cover_photo_id từ pages_images_current với uploaded_photo_id của receipt; '
+    'với avatar, dùng pages_images_current(include_avatar=true) để xem ảnh hiện tại. '
+    'Quyền ghi MCP không tự cấp thêm quyền Meta: nếu Meta từ chối, báo đúng lỗi quyền của nguồn đã chọn.'
 )
 
 

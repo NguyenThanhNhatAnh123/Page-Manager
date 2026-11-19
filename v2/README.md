@@ -94,6 +94,20 @@ MCP đầy đủ có thêm `pages_get`, `pages_edit_options`, `pages_categories`
 
 Đổi danh mục theo tên: dùng `pages_categories` với `page_id`, `connection_id`, `search` để lấy ID Meta, rồi gửi ID trong `category_ids` của `pages_edit` cùng UUID cố định. Kết quả `complete=false` chỉ ra taxonomy chưa đầy đủ; không đoán ID khi không tìm thấy tên chính xác. `pages_edit` báo `isError=true` nếu Meta từ chối hoặc kết quả chưa rõ; không tạo UUID khác để gửi lại. `accepted` là xác nhận tiếp nhận, cần đọc lại bằng `pages_edit_options` và dùng `pages_refresh` khi muốn cập nhật dữ liệu giao diện.
 
+### Avatar và ảnh bìa qua MCP
+
+1. Đọc `pages_edit_options` với đúng `page_id` và `connection_id`. Chỉ dùng ảnh người dùng giao cho Page đó.
+2. Gọi `pages_images_upload` với `mime` (`image/jpeg` hoặc `image/png`) và `image_base64` do máy khách mã hóa từ tệp. Không in base64 trong chat. Có thể dùng `pages_images_upload_info` để lấy hướng dẫn tải byte ảnh bằng HTTP `POST /api/page-images`, cùng Bearer MCP token; cách này phù hợp với tệp lớn. Hai cách đều chỉ lưu ảnh tạm, chưa thay đổi Facebook.
+3. Lấy `image.id` rồi gọi `pages_edit_image` với `page_id`, `connection_id`, `kind` (`avatar` hoặc `cover`), `image_id` và `request_id` UUID cố định. Không nhận URL ảnh ngoài hoặc đường dẫn file trên máy chủ.
+4. Nếu mất phản hồi, dùng `pages_edit_image_status` với cùng Page/nguồn/UUID. Không tạo UUID mới để tự tải ảnh hoặc gửi Meta lại. Receipt vẫn đọc/gửi lại an toàn sau khi ảnh tạm hết hạn; cùng UUID với ảnh/Page/nguồn/loại khác bị từ chối.
+5. Sau `accepted`, đối chiếu `cover_photo_id` từ `pages_images_current` với `uploaded_photo_id` của receipt. Với avatar, `pages_images_current(include_avatar=true)` đọc ảnh mới từ Meta và trả PNG an toàn dưới dạng MCP image content để xem trực tiếp. Cache avatar của các kho đang mở được làm mới sau lượt áp dụng ảnh.
+
+Ảnh chỉ nhận JPEG/PNG một khung, tối đa 8 MiB và 20 triệu điểm ảnh. Kho tạm riêng từng UUID giữ ảnh 24 giờ, tối đa 256 MiB/256 tệp; `pages_images_list` trả metadata, không trả đường dẫn server. Dọn cache chỉ tác động tệp ảnh tạm do luồng này tạo, không dọn video/Reel hay media khác. ID ảnh ràng buộc MIME và bytes; không mượn ảnh/token từ kho khác.
+
+MCP token có quyền ghi mới được tải/áp dụng ảnh. Payload MCP lớn chỉ dành cho `pages_images_upload`, tối đa 12 MiB để chứa ảnh base64; các công cụ JSON khác vẫn giới hạn 64 KiB. Upload HTTP truyền byte ảnh theo luồng và vẫn kiểm tra giới hạn 8 MiB tại worker. `PM_DEV_READ_ONLY=1` cho phép chuẩn bị ảnh trong kho nhưng chặn áp dụng ảnh lên Meta.
+
+Luồng API này không cần mở Facebook trong trình duyệt. Quyền MCP không tự cấp quyền Meta; nguồn Page vẫn phải đáp ứng yêu cầu của [Page Picture](https://developers.facebook.com/docs/graph-api/reference/page/picture/), [Page Photos](https://developers.facebook.com/docs/graph-api/reference/page/photos/) và [Page cover](https://developers.facebook.com/docs/graph-api/reference/page/). Nếu Meta từ chối sau khi đã tải photo, kết quả là `partial` với thông báo quyền phù hợp, không báo thành công hoặc tự tải lại. Kết nối lại MCP sau cập nhật để nhận công cụ mới.
+
 ## Danh sách Page
 
 Pages hiển thị lưới 3/2/1 cột theo độ rộng, giữ tìm tên/ID, lọc đang quản lý/đã gỡ và phân trang từ máy chủ (12/24/48 Page mỗi trang). Thẻ gồm avatar, tên/UID, trạng thái, nguồn System User và bốn chỉ số. Người theo dõi dùng `details.followers_count`, kèm thời điểm đọc thực tế trong tooltip; lượt phát/bình luận/chia sẻ là tổng tích lũy của các Reel được theo dõi, lấy số không-null gần nhất cho từng chỉ số. Tooltip nêu số Reel có dữ liệu. Chưa có số liệu hiển thị `—`, số 0 thật hiển thị `0`; không gán nhãn 30 ngày hoặc tăng trưởng 7 ngày khi chưa có dữ liệu tương ứng. Chỉ tổng hợp cho các Page trong cửa sổ phân trang đang trả về, không thêm cuộc gọi Meta khi mở danh sách.
