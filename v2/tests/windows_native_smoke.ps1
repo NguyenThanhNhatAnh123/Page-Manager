@@ -55,7 +55,7 @@ try {
     Checked (Join-Path $pgBin 'pg_ctl.exe') @('-D',$pgData,'-l',(Join-Path $testRoot 'postgres.log'),'-o','-h 127.0.0.1 -p 55433','-w','start')
     $env:PM_TEST_DATABASE_URL = 'postgresql://postgres@127.0.0.1:55433/postgres'
     $env:DATABASE_URL = $env:PM_TEST_DATABASE_URL
-    Checked $pythonExe @('-m','pytest','tests/test_worker.py','tests/test_server.py','tests/test_windows_native.py','tests/test_transfer_windows.py','tests/test_deployment.py','tests/test_public_updates.py','-q')
+    Checked $pythonExe @('-m','pytest','tests/test_worker.py','tests/test_mcp_page_edits.py','tests/test_server.py','tests/test_windows_native.py','tests/test_transfer_windows.py','tests/test_deployment.py','tests/test_public_updates.py','-q')
     $state = Join-Path $testRoot 'foreground'
     $config = Write-Configuration $state $env:PM_TEST_DATABASE_URL
     $foreground = Start-Process -FilePath $pythonExe -ArgumentList ('"{0}" --config "{1}" --gateway "{2}" --state-dir "{3}" --worker-module tests.runtime_server:app' -f $runtime,$config,$gateway,$state) -WorkingDirectory $appRoot -WindowStyle Hidden -PassThru
