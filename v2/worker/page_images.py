@@ -200,14 +200,22 @@ def image_edit_status(workspace, body):
 
 async def current_page_images(workspace, body):
     manager = workspace.manager
+    cover_error = None
     async with manager._page_lock(body.page_id), manager._lock(body.connection_id), manager.capacity:
         source = manager._edit_source(body.page_id, body.connection_id)
         try:
             async with manager.graph_factory() as graph:
                 token, _ = await manager._edit_token(graph, body.page_id, source)
-                raw = await graph.get(body.page_id, token, {'fields': 'id,cover'})
-                if raw.get('id') != body.page_id:
-                    raise GraphError()
+                try:
+                    raw = await graph.get(body.page_id, token, {'fields': 'id,cover'})
+                    if raw.get('id') != body.page_id:
+                        raise GraphError()
+                except GraphError as error:
+                    # Cover reads and avatar preview can have different provider
+                    # permissions. Preserve an honest partial result so a cover
+                    # failure does not prevent the independent safe avatar read.
+                    raw = {}
+                    cover_error = error.status
                 manager._edit_source(body.page_id, body.connection_id, source['token_revision'])
         except GraphError as error:
             raise AppError('Chưa đọc được ảnh Page từ Meta; kiểm tra nguồn và quyền.', 'meta_' + error.status, 400) from None
@@ -216,7 +224,8 @@ async def current_page_images(workspace, body):
     if not isinstance(cover_id, str) or not re.fullmatch(r'[0-9]{1,32}', cover_id):
         cover_id = None
     return {'page_id': body.page_id, 'connection_id': body.connection_id, 'cover_photo_id': cover_id,
-            'cover_read_status': 'available' if cover_id else 'empty_or_unavailable',
+            'cover_read_status': 'unavailable' if cover_error else 'available' if cover_id else 'empty_or_unavailable',
+            'cover_error': cover_error,
             'avatar_preview_path': '/api/pages/' + body.page_id + '/avatar'}
 
 

@@ -146,6 +146,7 @@ def image_mcp(edit_mcp, tmp_path):
         graph.uploads = []
         graph.avatar_updates = []
         graph.upload_error = None
+        graph.cover_error = None
 
         async def preview(pid, workspace=workspace):
             return image_bytes(color='blue')
@@ -153,6 +154,8 @@ def image_mcp(edit_mcp, tmp_path):
         async def get_page(pid, token, params, graph=graph):
             assert pid == graph.page_id and params == {'fields': 'id,cover'}
             graph.calls.append('cover_read')
+            if graph.cover_error:
+                raise graph.cover_error
             return {'id': pid, 'cover': {'id': '999', 'source': 'https://example.test/private-provider-url'}}
 
         async def upload(token, pid, raw, mime, graph=graph):
@@ -278,6 +281,17 @@ async def test_current_images_read_cover_id_and_safe_avatar_content_without_prov
     assert image['type'] == 'image' and image['mimeType'] == 'image/png'
     assert base64.b64decode(image['data']) == image_bytes(color='blue')
     assert 'private-provider-url' not in str(response) and 'SyntheticPageTokenForMCP' not in str(response)
+    assert image_mcp.graphs['first'].uploads == []
+
+
+async def test_cover_read_failure_does_not_hide_an_available_avatar_preview(image_mcp):
+    image_mcp.graphs['first'].cover_error = GraphError('permission_limited', 200)
+    response = await call(image_mcp, 'pages_images_current', {
+        'page_id': '555', 'connection_id': 1, 'include_avatar': True}, capability='read')
+    assert response['result']['isError'] is True
+    assert content(response)['cover_read_status'] == 'unavailable'
+    assert content(response)['cover_error'] == 'permission_limited'
+    assert response['result']['content'][1]['type'] == 'image'
     assert image_mcp.graphs['first'].uploads == []
 
 

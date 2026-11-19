@@ -210,6 +210,7 @@ def install(app,workspace_for,create_reel,reel_action):
                     else:data=await reel_action(request,jid,name.rsplit('_',1)[-1])
                 result={'content':[{'type':'text','text':json.dumps(data,ensure_ascii=False,default=str)}],
                         'isError':name in ('pages_edit','pages_edit_image') and data.get('ok') is False}
+                if name=='pages_images_current' and data.get('cover_read_status')=='unavailable':result['isError']=True
                 if name=='pages_images_current' and parsed.include_avatar:
                     from page_manager.avatars import AvatarUnavailable
                     try:
