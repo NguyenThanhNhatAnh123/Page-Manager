@@ -33,6 +33,8 @@ def install(app,workspace_for,create_reel,reel_action):
         page_id:str=Field(pattern=r'^[0-9]{1,32}$')
     class EditOptions(PageEditSource):
         page_id:str=Field(pattern=r'^[0-9]{1,32}$')
+    class PageCategories(EditOptions):
+        search:str=Field(default='',max_length=200)
     class AmendJob(AmendReel):
         job_id:int=Field(gt=0,strict=True)
     read_tools={
@@ -49,6 +51,7 @@ def install(app,workspace_for,create_reel,reel_action):
         'pages_analytics':('View/comment/share và độ đầy đủ dữ liệu.',{'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0}}),
         'pages_get':('Đọc Page và các bài đăng đã lưu trong kho cá nhân.',GetPage),
         'pages_edit_options':('Đọc các trường Page được phép chỉnh sửa từ nguồn System User đã chọn.',EditOptions),
+        'pages_categories':('Tìm danh mục Meta theo tên cho đúng Page và nguồn đã chọn; dùng ID kết quả trong category_ids của pages_edit. complete=false nghĩa là danh sách chưa đầy đủ.',PageCategories),
         'pages_reels_upload_info':('Hướng dẫn tải video từ máy khách qua HTTP bằng cùng MCP token; không đọc đường dẫn trên máy chủ.',{}),
     }
     writes={
@@ -63,7 +66,7 @@ def install(app,workspace_for,create_reel,reel_action):
         'pages_connection_disconnect':('Ngắt kết nối nguồn trong kho cá nhân bằng revision hiện tại.',DisconnectConnection),
         'pages_manage':('Đánh dấu chuẩn bị, gỡ hoặc khôi phục Page trong kho cá nhân.',ManagePage),
         'pages_refresh':('Đọc lại thông tin Page và bài đăng từ Meta.',RefreshPage),
-        'pages_edit':('Sửa các trường thông tin Page được seller cho phép; request_id cố định.',EditPage),
+        'pages_edit':('Sửa thông tin Page seller đã cho phép, đúng nguồn từ pages_edit_options. Giữ request_id cố định; accepted chỉ là Meta tiếp nhận. Nếu failed/unknown thì đọc lại Page, không tự tạo yêu cầu mới.',EditPage),
         'pages_reel_create':('Tạo lịch Reel trực tiếp từ video seller đã giao; không duyệt Telegram hoặc hỏi lại. Dùng cùng request_id để chống trùng.',None),
         'pages_reel_now':('Đăng ngay Reel công khai từ video seller đã giao; không duyệt Telegram, không hỏi xác nhận lại. Dùng request_id cố định.',ImmediateReel),
         'pages_reel_amend':('Sửa caption hoặc thời gian của lịch chưa gửi bước nào tới Meta.',AmendJob),
@@ -142,6 +145,7 @@ def install(app,workspace_for,create_reel,reel_action):
                 elif name in ('pages_reel_schedule','pages_reel_create'):data=await create_reel(request,TokenReelInput.model_validate(args))
                 elif name=='pages_get':data=manager.page(parsed.page_id,limit=parsed.limit,offset=parsed.offset)
                 elif name=='pages_edit_options':data=await manager.edit_options(parsed.page_id,PageEditSource.model_validate(parsed.model_dump(exclude={'page_id'})))
+                elif name=='pages_categories':data=await manager.page_categories(parsed.page_id,parsed.connection_id,parsed.search)
                 elif name=='pages_reels_upload_info':
                     from page_manager.reel_assets import MAX_VIDEO_BYTES
                     data={'path':'/api/reels/assets','method':'POST','content_type':'application/octet-stream','filename_header':'X-Filename','authorization':'Bearer <same personal MCP token>','max_video_bytes':MAX_VIDEO_BYTES}
@@ -173,7 +177,8 @@ def install(app,workspace_for,create_reel,reel_action):
                     if type(jid) is not int or jid<1:return error(-32602,'job_id is required')
                     if name=='pages_reel_get':data={'job':workspace.scheduler.public(store.reel_job(jid))}
                     else:data=await reel_action(request,jid,name.rsplit('_',1)[-1])
-                result={'content':[{'type':'text','text':json.dumps(data,ensure_ascii=False,default=str)}],'isError':False}
+                result={'content':[{'type':'text','text':json.dumps(data,ensure_ascii=False,default=str)}],
+                        'isError':name=='pages_edit' and data.get('ok') is False}
             except (AppError,ValidationError,ValueError,KeyError) as e:
                 result={'content':[{'type':'text','text':e.detail if isinstance(e,AppError) else 'Dữ liệu công cụ không hợp lệ.'}],'isError':True}
             except HTTPException as e:

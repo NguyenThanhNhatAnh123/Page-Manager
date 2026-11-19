@@ -90,7 +90,9 @@ Tool tạo lịch dùng `request_id` UUID cố định: gửi lại đúng nội
 
 Khi kết nối, MCP trả chính sách `publication_policy.mode=direct`, không duyệt Telegram và không yêu cầu xác nhận lại cho video đã được seller giao đăng. Agent dùng `pages_reel_now` để đăng ngay, `pages_reel_schedule`/`pages_reel_create` để đặt lịch. Chỉ hỏi dữ liệu còn thiếu; không đoán Page khi chưa rõ. Hướng dẫn đưa vào dự án Codex/Claude ở `examples/agent-publication-instructions.md`. Sau cập nhật, kết nối lại MCP để nhận chính sách và schema mới.
 
-MCP đầy đủ có thêm `pages_get`, `pages_edit_options`, `pages_connection_create`, `pages_connection_update`, `pages_connection_check`, `pages_connection_sync`, `pages_connection_disconnect`, `pages_manage`, `pages_refresh`, `pages_edit`, `pages_reel_create` (alias tạo lịch), `pages_reel_now`, `pages_reel_amend`, `pages_reel_resume`, `pages_reels_upload_info`. Upload video từ máy khách dùng HTTP `POST /api/reels/assets` với cùng Bearer token, `Content-Type: application/octet-stream` và `X-Filename`; không nhận đường dẫn file tùy ý của máy chủ.
+MCP đầy đủ có thêm `pages_get`, `pages_edit_options`, `pages_categories`, `pages_connection_create`, `pages_connection_update`, `pages_connection_check`, `pages_connection_sync`, `pages_connection_disconnect`, `pages_manage`, `pages_refresh`, `pages_edit`, `pages_reel_create` (alias tạo lịch), `pages_reel_now`, `pages_reel_amend`, `pages_reel_resume`, `pages_reels_upload_info`. Upload video từ máy khách dùng HTTP `POST /api/reels/assets` với cùng Bearer token, `Content-Type: application/octet-stream` và `X-Filename`; không nhận đường dẫn file tùy ý của máy chủ.
+
+Đổi danh mục theo tên: dùng `pages_categories` với `page_id`, `connection_id`, `search` để lấy ID Meta, rồi gửi ID trong `category_ids` của `pages_edit` cùng UUID cố định. Kết quả `complete=false` chỉ ra taxonomy chưa đầy đủ; không đoán ID khi không tìm thấy tên chính xác. `pages_edit` báo `isError=true` nếu Meta từ chối hoặc kết quả chưa rõ; không tạo UUID khác để gửi lại. `accepted` là xác nhận tiếp nhận, cần đọc lại bằng `pages_edit_options` và dùng `pages_refresh` khi muốn cập nhật dữ liệu giao diện.
 
 ## Danh sách Page
 
