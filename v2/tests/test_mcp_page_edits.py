@@ -58,6 +58,10 @@ class EditGraph:
             raise self.error
         return True
 
+    async def categories(self, token):
+        self.calls.append('categories')
+        return [{'id': '101', 'name': 'Digital creator'}, {'id': '102', 'name': 'Restaurant'}], True, None
+
 
 @pytest.fixture
 def edit_mcp(tmp_path, monkeypatch):
@@ -119,6 +123,7 @@ async def test_edit_schema_and_reader_capability_match_the_real_edit_fields(edit
     readers = (await rpc(edit_mcp, 'tools/list', capability='read'))['result']['tools']
     assert 'pages_edit' not in {tool['name'] for tool in readers}
     assert 'pages_edit_options' in {tool['name'] for tool in readers}
+    assert 'pages_categories' in {tool['name'] for tool in readers}
     denied = await call(edit_mcp, 'pages_edit', change(bio='Denied'), capability='read')
     assert 'error' in denied and edit_mcp.graphs['first'].calls == []
 
@@ -133,6 +138,26 @@ async def test_edit_options_reads_the_selected_page_without_mutation_or_token_le
     assert edit_mcp.graphs['first'].mutations == []
     assert 'SyntheticSystemTokenForMCP' not in json.dumps(result)
     assert 'SyntheticPageTokenForMCP' not in json.dumps(result)
+
+
+async def test_category_name_search_is_read_only_source_bound_and_returns_meta_ids(edit_mcp):
+    arguments = {'page_id': '555', 'connection_id': 1, 'search': 'digital creator'}
+    result = await call(edit_mcp, 'pages_categories', arguments, capability='read')
+    assert result['result']['isError'] is False
+    assert content(result) == {'items': [{'id': '101', 'name': 'Digital creator'}], 'complete': True}
+    graph = edit_mcp.graphs['first']
+    calls = list(graph.calls)
+    assert await call(edit_mcp, 'pages_categories', arguments, capability='read') == result
+    assert graph.calls == calls and graph.mutations == []
+    foreign = await call(edit_mcp, 'pages_categories', arguments, owner='second', capability='read')
+    assert foreign['result']['isError'] is True and edit_mcp.graphs['second'].calls == []
+
+
+@pytest.mark.parametrize('search', [False, 'x' * 201])
+async def test_invalid_category_search_is_rejected_without_meta_access(edit_mcp, search):
+    result = await call(edit_mcp, 'pages_categories', {'page_id': '555', 'connection_id': 1, 'search': search})
+    assert result.get('error') or result.get('result', {}).get('isError') is True
+    assert edit_mcp.graphs['first'].calls == []
 
 
 @pytest.mark.parametrize('always_open', [False, True])

@@ -33,6 +33,8 @@ def install(app,workspace_for,create_reel,reel_action):
         page_id:str=Field(pattern=r'^[0-9]{1,32}$')
     class EditOptions(PageEditSource):
         page_id:str=Field(pattern=r'^[0-9]{1,32}$')
+    class PageCategories(EditOptions):
+        search:str=Field(default='',max_length=200)
     class AmendJob(AmendReel):
         job_id:int=Field(gt=0,strict=True)
     read_tools={
@@ -49,6 +51,7 @@ def install(app,workspace_for,create_reel,reel_action):
         'pages_analytics':('View/comment/share và độ đầy đủ dữ liệu.',{'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0}}),
         'pages_get':('Đọc Page và các bài đăng đã lưu trong kho cá nhân.',GetPage),
         'pages_edit_options':('Đọc các trường Page được phép chỉnh sửa từ nguồn System User đã chọn.',EditOptions),
+        'pages_categories':('Tìm danh mục Meta theo tên cho đúng Page và nguồn đã chọn; dùng ID kết quả trong category_ids của pages_edit. complete=false nghĩa là danh sách chưa đầy đủ.',PageCategories),
         'pages_reels_upload_info':('Hướng dẫn tải video từ máy khách qua HTTP bằng cùng MCP token; không đọc đường dẫn trên máy chủ.',{}),
     }
     writes={
@@ -142,6 +145,7 @@ def install(app,workspace_for,create_reel,reel_action):
                 elif name in ('pages_reel_schedule','pages_reel_create'):data=await create_reel(request,TokenReelInput.model_validate(args))
                 elif name=='pages_get':data=manager.page(parsed.page_id,limit=parsed.limit,offset=parsed.offset)
                 elif name=='pages_edit_options':data=await manager.edit_options(parsed.page_id,PageEditSource.model_validate(parsed.model_dump(exclude={'page_id'})))
+                elif name=='pages_categories':data=await manager.page_categories(parsed.page_id,parsed.connection_id,parsed.search)
                 elif name=='pages_reels_upload_info':
                     from page_manager.reel_assets import MAX_VIDEO_BYTES
                     data={'path':'/api/reels/assets','method':'POST','content_type':'application/octet-stream','filename_header':'X-Filename','authorization':'Bearer <same personal MCP token>','max_video_bytes':MAX_VIDEO_BYTES}

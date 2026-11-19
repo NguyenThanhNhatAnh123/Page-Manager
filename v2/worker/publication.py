@@ -40,6 +40,7 @@ AGENT_INSTRUCTIONS = (
     ' Chỉ báo đăng thành công khi job hoàn tất và có published_url.'
     ' Khi sửa thông tin Page, đọc pages_edit_options với đúng page_id và connection_id trước; '
     'chỉ gửi các trường seller đã yêu cầu qua pages_edit và giữ nguyên request_id UUID. '
+    'Nếu đổi danh mục theo tên, tra ID bằng pages_categories; không tự đoán ID hoặc tên tương đương. '
     'outcome=accepted chỉ xác nhận Meta tiếp nhận; đọc lại bằng pages_edit_options để kiểm tra giá trị. '
     'Nếu outcome=failed/unknown/partial, báo đúng kết quả và không tự tạo request_id mới để gửi lại.'
 )
