@@ -156,9 +156,13 @@ def test_disabled_account_cleanup_and_other_owner_isolation(runtime,monkeypatch)
     with psycopg.connect(os.environ['PM_TEST_DATABASE_URL']) as db:
         db.execute('UPDATE pm_users SET active=FALSE WHERE id=%s',(ws.owner,))
     from worker.app import central
-    result=sweep_all(central)
-    assert result['owners']==20 and result['deleted']==1 and result['errors']==0
-    assert runtime[0].get(runtime[2][1]).assets.list()==[]
+    try:
+        result=sweep_all(central)
+        assert result['owners']==20 and result['deleted']==1 and result['errors']==0
+        assert runtime[0].get(runtime[2][1]).assets.list()==[]
+    finally:
+        with psycopg.connect(os.environ['PM_TEST_DATABASE_URL']) as db:
+            db.execute('UPDATE pm_users SET active=TRUE WHERE id=%s',(ws.owner,))
 
 
 @pytest.mark.asyncio
