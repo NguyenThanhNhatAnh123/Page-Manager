@@ -1,7 +1,7 @@
 """Private Python Meta worker. All public access is through the Rust gateway."""
 import asyncio
 import base64
-from contextlib import asynccontextmanager,suppress
+from contextlib import asynccontextmanager,suppress,nullcontext
 from datetime import datetime,timezone
 from datetime import timedelta
 import hashlib
@@ -455,7 +455,8 @@ async def create_reel(request:Request,body:TokenReelInput):
     source=store.source(body.page_id,body.connection_id);page,_=store.page(body.page_id)
     asset=store.reel_asset(body.asset_id) if previous else await asyncio.to_thread(workspace.assets.for_schedule,body.asset_id)
     values={**body.model_dump(mode='json'),**schedule,'page_name':page['name'],'connection_label':source['label'],'token_revision':source['token_revision'],'asset_name':asset['name']}
-    row,replayed=store.reel_create(values)
+    with nullcontext() if previous else workspace.assets.pin(asset):
+        row,replayed=store.reel_create(values)
     return {'job':workspace.scheduler.public(row),'replayed':replayed}
 
 
