@@ -50,7 +50,9 @@ def preservation(db):
 
 def build_plan(db,data_root,destination,current_video_root=None):
     data_root=assert_directory(data_root);destination=assert_directory(destination)
-    if destination==Path(destination.anchor) or destination==data_root or destination.is_relative_to(data_root):
+    source_base=assert_directory(current_video_root or data_root)
+    if (destination==Path(destination.anchor) or destination.is_relative_to(source_base) or
+            source_base.is_relative_to(destination) or destination.is_relative_to(data_root)):
         raise ValueError('Use a separate dedicated video root')
     plan=[]
     for owner in owners(db):
@@ -110,6 +112,7 @@ def switch_paths(db,plan,*,reverse=False):
 def cleanup_source(plan):
     count=0
     for entry in plan:
+        if Path(entry['source'])==Path(entry['destination']):raise ValueError('Source and destination must differ')
         verified(entry,'destination')
         source=Path(entry['source'])
         if not source.exists():continue

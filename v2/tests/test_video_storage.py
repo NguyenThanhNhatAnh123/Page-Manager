@@ -97,6 +97,17 @@ def test_unknown_temporary_file_is_not_removed(runtime,tmp_path):
     assert temporary.read_bytes()==b'unknown partial transfer'
 
 
+def test_repeating_move_into_current_storage_cannot_delete_live_files(runtime,tmp_path):
+    ws,job,target=migration_fixture(runtime,tmp_path)
+    with database() as db:
+        plan=build_plan(db,os.environ['PM_DATA_DIR'],target)
+        with pytest.raises(ValueError):build_plan(db,os.environ['PM_DATA_DIR'],target,target)
+    copy_verified(plan)
+    forged=[dict(plan[0],source=plan[0]['destination'])]
+    with pytest.raises(ValueError,match='must differ'):cleanup_source(forged)
+    assert Path(plan[0]['destination']).exists() and Path(plan[0]['source']).exists()
+
+
 def test_quiesce_waits_for_active_job_without_changing_it(runtime,tmp_path,monkeypatch):
     ws,job,target=migration_fixture(runtime,tmp_path)
     ws.manager.store.reel_update(job['id'],status='uploading')
