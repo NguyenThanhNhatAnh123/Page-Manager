@@ -39,6 +39,7 @@ from .analytics import Analytics,ID
 from .catalog import ranked_pages,calendar_groups
 from .sync_schedule import interval_hours,enqueue_due
 from .page_images import PageImageCache
+from .video_library import VideoLibrary,video_workspace,retention_days,retention_loop,assert_directory,maintenance
 
 
 def central():return psycopg.connect(os.environ['DATABASE_URL'],row_factory=dict_row,connect_timeout=5,prepare_threshold=None)
@@ -65,7 +66,7 @@ class Workspace:
             secret_box=SecretBox(owner),graph_version=os.environ.get('PM_GRAPH_VERSION','v26.0'))
         self.manager.page_locks=registry.page_locks
         self.manager.capacity=registry.read_slots
-        self.assets=TokenReelAssets(self.root,self.manager.store)
+        self.assets=VideoLibrary(video_workspace(self.owner,self.root),self.manager.store)
         self.scheduler=DirectReelScheduler(self.manager,self.assets)
         self.scheduler.capacity=registry.publish_slots
         self.analytics=Analytics(self.manager,registry.analytics_slots)
@@ -129,6 +130,9 @@ class Registry:
                     await self.shutdown()
                     return
             try:
+                if maintenance():
+                    self.last_tick=time.monotonic();self.error=False
+                    await asyncio.sleep(2);continue
                 with central() as db:
                     users=db.execute('SELECT id FROM public.pm_users WHERE active=TRUE ORDER BY id').fetchall()
                     pending=db.execute("SELECT s.user_id,s.requested_at FROM public.pm_sync_requests s JOIN public.pm_users u ON u.id=s.user_id WHERE u.active AND s.requested_at>COALESCE(s.processed_at,'epoch'::timestamptz)").fetchall()
@@ -170,14 +174,19 @@ registry=Registry()
 @asynccontextmanager
 async def lifespan(app):
     if len(os.environ.get('PM_INTERNAL_KEY',''))<48:raise RuntimeError('Configure PM_INTERNAL_KEY')
+    retention_days()
+    if os.environ.get('PM_VIDEO_DIR'):assert_directory(os.environ['PM_VIDEO_DIR'])
     lease=central();lease.autocommit=True
     if not lease.execute('SELECT pg_try_advisory_lock(80218021) AS locked').fetchone()['locked']:
         lease.close();raise RuntimeError('Another PageManager v2 worker already owns the scheduler')
     registry.lease=lease
     with central() as db:db.execute("UPDATE public.pm_sync_requests SET status='pending',started_at=NULL WHERE status='running' AND requested_at>COALESCE(processed_at,'epoch'::timestamptz)")
     task=asyncio.create_task(registry.run())
+    cleanup=asyncio.create_task(retention_loop(central))
     try:yield
     finally:
+        cleanup.cancel()
+        with suppress(asyncio.CancelledError):await cleanup
         await registry.shutdown();task.cancel()
         with suppress(asyncio.CancelledError):await task
         lease.close()
@@ -192,6 +201,8 @@ async def authenticate(request,call_next):
     if not secrets.compare_digest(supplied,os.environ.get('PM_INTERNAL_KEY','!')):
         return JSONResponse({'detail':'Không được phép.'},status_code=401)
     if request.url.path=='/health':return await call_next(request)
+    if maintenance() and request.method not in ('GET','HEAD','OPTIONS'):
+        return JSONResponse({'detail':'Đang chuyển kho video. Vui lòng thử lại sau ít phút.','code':'video_maintenance'},status_code=503,headers={'Retry-After':'60'})
     try:
         owner=request.headers.get('x-pm-workspace','')
         if str(UUID(owner))!=owner:raise ValueError()
@@ -350,16 +361,12 @@ async def metric_history(request:Request,video_id:str,days:int=Query(30,ge=1,le=
 
 @app.get('/api/reels/config')
 async def config(request:Request):
-    return {**ws(request).scheduler.status(),'max_video_bytes':MAX_VIDEO_BYTES,'max_parallel':4,'default_timezone':'America/Los_Angeles'}
+    return {**ws(request).scheduler.status(),'max_video_bytes':MAX_VIDEO_BYTES,'max_parallel':4,'default_timezone':'America/Los_Angeles','retention_days':retention_days(),'protect_pending_jobs':True}
 
 
 @app.get('/api/reels/assets')
 async def assets(request:Request,limit:int=Query(24,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200)):
-    workspace=ws(request)
-    with workspace.manager.store.connect() as db:
-        rows=[workspace.assets.public(dict(row)) for row in db.execute("SELECT * FROM reel_assets WHERE lower(name) LIKE ? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",('%'+search.lower()+'%',limit,offset))]
-        total=db.execute('SELECT COUNT(*) FROM reel_assets WHERE lower(name) LIKE ?',('%'+search.lower()+'%',)).fetchone()[0]
-    return {'assets':rows,'total':total,'limit':limit,'offset':offset}
+    return ws(request).assets.page(limit,offset,search)
 
 
 @app.post('/api/page-images',status_code=201)
@@ -379,7 +386,7 @@ async def upload(request:Request):
     try:length=int(length) if length else None
     except ValueError:raise AppError('Dung lượng không hợp lệ.','invalid_input',422) from None
     async with ws(request).lock:
-        with ws(request).manager.store.connect() as db:used=db.execute('SELECT COALESCE(SUM(size),0) FROM reel_assets').fetchone()[0]
+        used=ws(request).assets.used_bytes()
         if used+(length or MAX_VIDEO_BYTES)>int(os.environ.get('PM_QUOTA_BYTES',20*1024**3)):raise AppError('Kho video đã đạt giới hạn dung lượng.','quota_exceeded',413)
         return {'asset':await ws(request).assets.ingest(request.stream(),unquote(name,errors='strict'),content_length=length)}
 
@@ -446,7 +453,7 @@ async def create_reel(request:Request,body:TokenReelInput):
     schedule=body.schedule()
     if not previous and datetime.fromisoformat(schedule['scheduled_at'])<=instant:raise AppError('Chọn thời gian đăng trong tương lai.','schedule_in_past',422)
     source=store.source(body.page_id,body.connection_id);page,_=store.page(body.page_id)
-    asset=await asyncio.to_thread(workspace.assets.resolve,body.asset_id)
+    asset=store.reel_asset(body.asset_id) if previous else await asyncio.to_thread(workspace.assets.for_schedule,body.asset_id)
     values={**body.model_dump(mode='json'),**schedule,'page_name':page['name'],'connection_label':source['label'],'token_revision':source['token_revision'],'asset_name':asset['name']}
     row,replayed=store.reel_create(values)
     return {'job':workspace.scheduler.public(row),'replayed':replayed}

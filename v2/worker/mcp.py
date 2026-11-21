@@ -146,10 +146,9 @@ def install(app,workspace_for,create_reel,reel_action):
                 elif name=='pages_events':data={'items':store.events(limit,offset),'total':store.event_count()}
                 elif name=='pages_reels_config':
                     from page_manager.reel_assets import MAX_VIDEO_BYTES
-                    data=workspace.scheduler.status()|{'max_video_bytes':MAX_VIDEO_BYTES,'max_parallel':2,'global_max_parallel':4,'default_timezone':'America/Los_Angeles'}
+                    data=workspace.scheduler.status()|{'max_video_bytes':MAX_VIDEO_BYTES,'max_parallel':2,'global_max_parallel':4,'default_timezone':'America/Los_Angeles','retention_days':workspace.assets.days,'protect_pending_jobs':True}
                 elif name=='pages_reels_assets':
-                    with store.connect() as db:
-                        data={'assets':[workspace.assets.public(dict(row)) for row in db.execute('SELECT * FROM reel_assets ORDER BY created_at DESC,id LIMIT ? OFFSET ?',(limit,offset))]}
+                    data=workspace.assets.page(limit,offset,search)
                 elif name=='pages_reels_list':
                     page=store.reel_job_page(limit,offset,status=args.get('status') or 'all',page_id=args.get('page_id'),connection_id=args.get('connection_id'))
                     data={'jobs':[workspace.scheduler.public(row) for row in page['rows']],'total':page['total']}

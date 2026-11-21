@@ -22,8 +22,15 @@ def validate_settings(config, release, previous):
     media = Path(values['PM_DATA_DIR']).resolve()
     if not media.is_dir():
         raise ValueError('Existing media directory is required')
+    videos=None
+    if values.get('PM_VIDEO_DIR'):
+        videos=Path(values['PM_VIDEO_DIR'])
+        if (not videos.is_absolute() or not videos.is_dir() or
+                any(path.is_symlink() or path.is_junction() for path in (videos,*videos.parents))):
+            raise ValueError('Existing private video directory is required')
+        videos=videos.resolve()
     for root in (release, previous):
-        if media.is_relative_to(Path(root).resolve().parent):
+        if media.is_relative_to(Path(root).resolve().parent) or videos and videos.is_relative_to(Path(root).resolve().parent):
             raise ValueError('Operational data must be outside all code releases')
     # Automatic updates deliberately exclude schema migrations, including deletions.
     def migrations(root):

@@ -120,6 +120,42 @@ with zipfile.ZipFile(sys.argv[2],'w',zipfile.ZIP_DEFLATED) as output:
     $restored = (Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $taskName).Actions[0].WorkingDirectory
     if ($restored -ne $healthyRelease) { throw 'Rollback did not restore the previous healthy task.' }
     if ((Get-FileHash -LiteralPath $config).Hash -ne $configHash) { throw 'Rollback rewrote private configuration.' }
+    # The explicitly requested storage move has its own migration/rollback gate.
+    # This destination and its source media are disposable hosted-runner fixtures.
+    $videoDestination=Join-Path $root 'private-videos'
+    $rejected=$false
+    try {
+        & $deploy -Bundle $broken -ExpectedCommit $env:GITHUB_SHA -ExpectedSha256 $brokenHash `
+            -StateDirectory $state -TaskName $taskName -HealthTimeoutSeconds 15 -VideoDestination $videoDestination
+    } catch { $rejected=$true }
+    if (!$rejected) { throw 'Broken storage migration was incorrectly accepted.' }
+    Wait-Healthy
+    if ((Get-FileHash -LiteralPath $config).Hash -ne $configHash) { throw 'Storage rollback failed to restore exact private config.' }
+    & $deploy -Bundle $bundle -ExpectedCommit $env:GITHUB_SHA -ExpectedSha256 $checksum `
+        -StateDirectory $state -TaskName $taskName -VideoDestination $videoDestination
+    Wait-Healthy
+    $verifyStorage=@'
+import os,sys
+from pathlib import Path
+from dotenv import dotenv_values
+values=dict(dotenv_values(sys.argv[1]));target=Path(sys.argv[2])
+assert Path(values['PM_VIDEO_DIR'])==target and values['PM_VIDEO_RETENTION_DAYS']=='7'
+assert values['PM_DEV_READ_ONLY']=='1'
+assert not Path(values['PM_VIDEO_MAINTENANCE_FILE']).exists()
+os.environ.update(values)
+from worker.app import central
+with central() as db:
+    owners=db.execute('SELECT id FROM pm_users').fetchall()
+    assert len(owners)==20
+    for owner in owners:
+        root=target/owner['id'];assert (root/'reel-assets').is_dir()
+        schema='w_'+owner['id'].replace('-','')
+        for asset in db.execute('SELECT id,path FROM "'+schema+'".reel_assets'):
+            path=Path(asset['path']);assert path.is_file() and path.is_relative_to(root)
+            assert not (Path(values['PM_DATA_DIR'])/owner['id']/'reel-assets'/path.name).exists()
+        assert not db.execute('SELECT 1 FROM "'+schema+'".reel_jobs WHERE status<>\'completed\'').fetchone()
+'@
+    Checked $python @('-c',$verifyStorage,$config,$videoDestination)
     Write-Host 'Real SYSTEM deployment and failed-start rollback passed with configuration/read-only mode preserved.'
 } finally {
     if ($taskCreated) {

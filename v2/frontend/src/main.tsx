@@ -1972,7 +1972,7 @@ function Library({
     [error, setError] = useState<unknown>();
   const client = useQueryClient(),
     input = useRef<HTMLInputElement>(null);
-  const query = useData<{ assets: Asset[]; total: number }>(
+  const query = useData<{ assets: Asset[]; total: number; retention_days?: number }>(
     user,
     `/api/reels/assets?limit=12&offset=${offset}&search=${encodeURIComponent(search)}`,
   );
@@ -2023,6 +2023,9 @@ function Library({
       </div>
       <div className="hint">
         MP4, MOV, M4V · tối đa 1 GiB/tệp · Tự nhận diện video đã tải lên.
+        {!!query.data?.retention_days && (
+          <> Video được lưu {query.data.retention_days} ngày từ lúc tải lên. Video còn lịch đăng được giữ đến khi lịch hoàn tất hoặc hủy. Lịch sử Reel đã đăng vẫn được giữ.</>
+        )}
       </div>
       {progress !== null && (
         <div
