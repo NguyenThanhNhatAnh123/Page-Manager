@@ -119,6 +119,18 @@ def test_preflight_rejects_operational_media_inside_code(tmp_path):
         state.validate_settings(config, new, previous)
 
 
+def test_preflight_requires_available_video_storage_outside_releases(tmp_path):
+    config,(previous,new)=configuration(tmp_path)
+    original=config.read_text()
+    videos=tmp_path/'videos';videos.mkdir()
+    config.write_text(original+'PM_VIDEO_DIR='+videos.as_posix()+'\nPM_VIDEO_RETENTION_DAYS=7\n')
+    assert state.validate_settings(config,new,previous)['PM_VIDEO_RETENTION_DAYS']=='7'
+    config.write_text(original+'PM_VIDEO_DIR='+(tmp_path/'offline').as_posix()+'\n')
+    with pytest.raises(ValueError,match='video directory'):state.validate_settings(config,new,previous)
+    config.write_text(original+'PM_VIDEO_DIR='+previous.as_posix()+'\n')
+    with pytest.raises(ValueError,match='outside'):state.validate_settings(config,new,previous)
+
+
 def test_native_release_serves_its_own_frontend_and_keeps_read_only_mode():
     values = {'PM_NATIVE_SERVER': '1', 'PM_FRONTEND_DIR': 'previous/frontend', 'PM_DEV_READ_ONLY': '1'}
     environment = native_environment(values)

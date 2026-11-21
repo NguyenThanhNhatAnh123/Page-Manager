@@ -96,3 +96,7 @@ Trước khi chuyển chính thức: kiểm tra bằng build đã qua CI, kiểm
 - [Microsoft: Windows Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
 - [PostgreSQL: Windows Service](https://www.postgresql.org/docs/current/app-pg-ctl.html)
 - [Caddy: Windows Service](https://caddyserver.com/docs/running#windows-service)
+
+## Kho video trên ổ riêng
+
+Xem [VIDEO-STORAGE.md](VIDEO-STORAGE.md) cho kho video theo UUID, retention 7 ngày và quy trình chuyển ổ có kiểm tra/rollback trước khi mở lại hệ thống.

@@ -174,6 +174,8 @@ class TokenReelAssets:
             result.update(preview_url=None,drive_url=f'https://drive.google.com/file/d/{file_id}/view')
         return result
 
+    def dedup_candidate(self,row):return True
+
     async def ingest(self,stream,filename,*,content_length=None):
         row=await self.files.ingest(stream,filename,content_length=content_length)
         committed=False
@@ -183,6 +185,7 @@ class TokenReelAssets:
                 # same bytes arrive under another filename or extension. Old
                 # corrupt/missing history records are never changed or reused.
                 for previous in self.store.reel_assets_matching(row['sha256'],row['size']):
+                    if not self.dedup_candidate(previous):continue
                     if previous['sha256']!=row['sha256'] or previous['size']!=row['size']:
                         continue
                     try:
