@@ -1,5 +1,6 @@
 """Private video storage and retention. Historical asset/job rows are never deleted."""
 import asyncio
+from contextlib import contextmanager
 from datetime import datetime,timedelta,timezone
 import logging
 import os
@@ -88,6 +89,17 @@ class VideoLibrary(TokenReelAssets):
         row=self.store.reel_asset(asset_id)
         if self.expired(row):raise AppError('Video đã hết thời hạn lưu; tải lại video để tạo lịch mới.','video_expired',410)
         return self.resolve(asset_id)
+
+    @contextmanager
+    def pin(self,row):
+        # Native Windows/NTFS cannot unlink an ordinary open read handle. Hold
+        # one until Store.reel_create commits its advisory-locked job binding.
+        # If cleanup won the race before open(), no job may be saved.
+        path=self.files.asset_path(row['id'],row['path'])
+        try:handle=path.open('rb')
+        except OSError:raise ReelAssetError('Video không còn trong kho; tải lại video trước khi đặt lịch.') from None
+        try:yield
+        finally:handle.close()
 
     def page(self,limit=24,offset=0,search=''):
         where="a.drive_file_id IS NULL AND lower(a.name) LIKE ?";params=['%'+search.lower()+'%']

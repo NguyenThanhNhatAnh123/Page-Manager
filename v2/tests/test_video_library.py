@@ -225,3 +225,28 @@ async def test_background_loop_removes_expired_fake_video_without_user_request(r
     finally:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):await task
+
+
+@pytest.mark.skipif(os.name!='nt',reason='Native Windows read handles deny NTFS deletion')
+def test_expiry_between_resolve_and_job_commit_cannot_remove_the_selected_video(runtime,monkeypatch):
+    monkeypatch.setenv('PM_VIDEO_RETENTION_DAYS','7')
+    ws=runtime[0].get(runtime[2][0]);connect(ws)
+    (old,_),values=make_job(ws)
+    ws.manager.store.reel_update(old['id'],status='cancelled')
+    asset=ws.assets.for_schedule(old['asset_id'])
+    with ws.assets.pin(asset):
+        age(ws,asset['id'],8)
+        result=clean(ws)
+        assert result['deleted']==0 and result['errors']==1 and Path(asset['path']).exists()
+        job,replayed=ws.manager.store.reel_create(values|{'request_id':str(uuid4())})
+        assert not replayed and job['asset_id']==asset['id']
+    assert clean(ws)['protected']==1
+    assert ws.assets.resolve(asset['id'])['path']==Path(asset['path'])
+
+
+def test_no_job_binding_can_pin_a_video_already_removed(runtime,monkeypatch):
+    ws,job=fixture_job(runtime,monkeypatch)
+    asset=ws.assets.for_schedule(job['asset_id'])
+    Path(asset['path']).unlink()
+    with pytest.raises(ReelAssetError,match='không còn'):
+        with ws.assets.pin(asset):raise AssertionError('Must not reach job creation')
