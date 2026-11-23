@@ -11,6 +11,7 @@ import json
 from uuid import uuid4,uuid5,NAMESPACE_DNS
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlsplit
 from PIL import Image
 
 URL=os.environ.get('PM_TEST_GATEWAY_URL')
@@ -68,6 +69,29 @@ async def test_gateway_upload_backpressure_forwards_retry_after_and_remains_heal
     assert all(isinstance(result,httpx.Response) and result.status_code==201 for result in results),results
     assert results[0].json()['asset']['id']==results[1].json()['asset']['id']
     assert not list(root.glob('.*.upload'))
+
+
+async def test_gateway_returns_idle_upload_error_before_the_client_finishes_sending(accounts):
+    target=urlsplit(URL)
+    if target.scheme!='http':pytest.skip('Raw loopback HTTP streaming probe')
+    client,user=await login('test_user18')
+    writer=None
+    try:
+        reader,writer=await asyncio.open_connection(target.hostname,target.port or 80)
+        request=(f'POST /api/reels/assets HTTP/1.1\r\nHost: {target.netloc}\r\nOrigin: {URL}\r\n'
+                 f'Cookie: pm_session={client.cookies.get("pm_session")}\r\nX-CSRF-Token: {user["csrf_token"]}\r\n'
+                 'Content-Type: application/octet-stream\r\nX-Filename: stalled.mp4\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n')
+        writer.write(request.encode('ascii')+b'\x00\x00\x00\x18ftypisom\x00\x00\x00\x00isommp42');await writer.drain()
+        head=await asyncio.wait_for(reader.readuntil(b'\r\n\r\n'),30)
+        while head.startswith(b'HTTP/1.1 100 '):head=await asyncio.wait_for(reader.readuntil(b'\r\n\r\n'),30)
+        assert head.startswith(b'HTTP/1.1 408 '),head
+        body=await asyncio.wait_for(reader.read(),5)
+        assert b'video_upload_timeout' in body,body
+        assert (await client.get('/healthz')).json()['ok']
+    finally:
+        if writer is not None:
+            writer.close();await writer.wait_closed()
+        await client.aclose()
 
 
 async def test_twenty_simultaneous_logins_are_isolated_and_enqueue_sync(accounts):
