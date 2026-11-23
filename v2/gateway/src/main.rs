@@ -263,7 +263,7 @@ async fn proxy(State(app):State<App>,req:Request)->Result<Response,Failure> {
  let status=result.status();let headers=result.headers().clone();
  if method!=Method::GET {let _=sqlx::query("INSERT INTO pm_audit(user_id,action,status) VALUES($1,$2,$3)").bind(&a.id).bind(if path=="/mcp"{"mcp_request"}else{"api_write"}).bind(status.as_u16() as i32).execute(&app.db).await;}
  let mut response=Response::new(Body::from_stream(result.bytes_stream()));*response.status_mut()=status;
- for name in ["content-type","content-length","content-range","accept-ranges","cache-control","content-disposition","x-accel-buffering"] {if let Some(value)=headers.get(name){response.headers_mut().insert(name,value.clone());}}
+ for name in ["content-type","content-length","content-range","accept-ranges","cache-control","content-disposition","x-accel-buffering","retry-after"] {if let Some(value)=headers.get(name){response.headers_mut().insert(name,value.clone());}}
  Ok(response)
 }
 

@@ -144,6 +144,8 @@ class FakeDatabase:
         self.read_only = False
         self.checkpoint = 'completed-checkpoint-original'
         self.active = 0
+        self.network_active = 0
+        self.pending_checkpoint = 'scheduled-original'
         self.rows = []
 
     def __enter__(self):
@@ -167,8 +169,12 @@ class FakeDatabase:
             self.rows = [('fixture-mcp', 'fixture-owner', 'credential-digest', False, 'future', None)]
         elif "WHERE status='completed'" in query:
             self.rows = [(json.dumps({'request_id': 'fixed-request', 'video_id': 'fixed-video', 'checkpoint': self.checkpoint}),)]
+        elif 'row_to_json(j)' in query:
+            self.rows = [(self.checkpoint,), (self.pending_checkpoint,)]
         elif 'reel_assets' in query:
             self.rows = [('fixture-asset',)]
+        elif "status IN ('starting'" in query:
+            self.rows = [(self.network_active,)]
         elif 'COUNT(*)' in query:
             self.rows = [(self.active,)]
         elif '."pages"' in query or '.pages' in query:
@@ -196,3 +202,19 @@ def test_state_fingerprints_completed_reel_checkpoints_without_exposing_credenti
     database.active = 1
     with pytest.raises(ValueError, match='Active or unresolved'):
         state.snapshot(config)
+
+
+def test_reviewed_deployment_preserves_pending_jobs_and_requires_maintenance_and_no_network_job(tmp_path,monkeypatch):
+    config,_=configuration(tmp_path)
+    database=FakeDatabase();database.active=2
+    monkeypatch.setattr(state.psycopg,'connect',lambda *a,**kw:database)
+    with pytest.raises(ValueError,match='maintenance marker'):state.snapshot(config,drained=True)
+    marker=tmp_path/'maintenance';marker.write_text('reviewed update')
+    config.write_text(config.read_text()+'PM_VIDEO_MAINTENANCE_FILE='+marker.as_posix()+'\n')
+    before=state.snapshot(config,drained=True)
+    assert state.snapshot(config,drained=True)==before
+    database.pending_checkpoint='changed scheduled request'
+    assert state.snapshot(config,drained=True)!=before
+    database.network_active=1
+    with pytest.raises(ValueError,match='Network Reel operation'):state.snapshot(config,drained=True)
+    with pytest.raises(ValueError,match='Active or unresolved'):state.snapshot(config)

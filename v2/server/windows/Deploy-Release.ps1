@@ -8,9 +8,13 @@ param(
     [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$TaskName = 'PageManager-v2',
     [ValidateRange(5,300)][int]$HealthTimeoutSeconds = 120,
     # Explicit operator-only migration. The automatic updater never supplies this.
-    [string]$VideoDestination
+    [string]$VideoDestination,
+    # Operator-only code update: pause new work, wait for network jobs to finish,
+    # then preserve every scheduled/unresolved job. Automatic CD never uses it.
+    [switch]$DrainScheduledJobs
 )
 $ErrorActionPreference = 'Stop'
+if ($VideoDestination -and $DrainScheduledJobs) { throw 'Choose one reviewed deployment mode.' }
 Set-StrictMode -Version Latest
 if (![Security.Principal.WindowsIdentity]::GetCurrent().IsSystem -and
     !([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -76,6 +80,7 @@ try {
     Export-ScheduledTask -TaskName $TaskName -TaskPath '\PageManager\' | Set-Content -LiteralPath $savedTask -Encoding Unicode
     $baseline = Join-Path $audit 'baseline.json'
     $stateScript = Join-Path $previous 'scripts\deployment_state.py'
+    $stateFlags=@()
     $videoScript = Join-Path $newApp 'scripts\video_storage.py'
     $videoJournal = Join-Path $audit 'video-migration.json'
     $configBackup = Join-Path $audit 'previous.env'
@@ -84,6 +89,13 @@ try {
     $pausedHere = $false
     Invoke-Checked $python @((Join-Path $previous 'scripts\release_bundle.py'), '--bundle', $Bundle,
         '--commit', $ExpectedCommit, '--sha256', $ExpectedSha256, '--destination', $release)
+    if ($DrainScheduledJobs) {
+        $stateScript=Join-Path $newApp 'scripts\deployment_state.py'
+        $stateFlags=@('--drained')
+        Invoke-Checked $python @('-c', 'import sys;sys.path.insert(0,sys.argv[1]);from scripts.deployment_state import validate_settings;from pathlib import Path;v=validate_settings(*sys.argv[2:5]);assert Path(v.get(''PM_VIDEO_MAINTENANCE_FILE'',''''))==Path(sys.argv[5]),''Configured maintenance marker required''', $newApp, $config, $newApp, $previous, $maintenance)
+        if (Test-Path -LiteralPath $maintenance) { throw 'An earlier maintenance requires inspection.' }
+        if (!(Test-Path -LiteralPath $pause)) { [IO.File]::WriteAllText($pause,'Reviewed code deployment'); $pausedHere=$true }
+    }
     if ($VideoDestination) {
         if (Test-Path -LiteralPath $maintenance) { throw 'An earlier storage maintenance requires inspection.' }
         if (!(Test-Path -LiteralPath $pause)) { [IO.File]::WriteAllText($pause,'Video storage migration'); $pausedHere=$true }
@@ -110,7 +122,7 @@ try {
         [IO.File]::WriteAllText($marker,'PageManager private video storage')
         $volume=Get-Volume -DriveLetter $VideoDestination.Substring(0,1)
         if ($volume.FileSystem -ne 'NTFS' -or $volume.HealthStatus -ne 'Healthy' -or $volume.DriveType -ne 'Fixed') { throw 'Healthy fixed NTFS video volume required.' }
-    } else {
+    } elseif (!$DrainScheduledJobs) {
         Invoke-Checked $python @($stateScript, '--config', $config, '--release', $newApp, '--previous', $previous)
     }
     Invoke-Checked $python @('-m', 'venv', (Join-Path $newApp '.venv'))
@@ -131,6 +143,11 @@ try {
             Invoke-Checked $newPython @($videoScript,'quiesce','--config',$config,'--previous',$previous,'--state',$StateDirectory,'--task',$TaskName,'--journal',$videoJournal)
             $applyAttempted=$true
             Invoke-Checked $newPython @($videoScript,'switch','--config',$config,'--destination',$VideoDestination,'--state',$StateDirectory,'--journal',$videoJournal)
+        } elseif ($DrainScheduledJobs) {
+            [IO.File]::WriteAllText($maintenance,'Reviewed code deployment')
+            Invoke-Checked $newPython @($videoScript,'quiesce','--config',$config,'--previous',$previous,'--state',$StateDirectory,'--task',$TaskName,'--journal',$videoJournal)
+            $stopped=$true
+            Invoke-Checked $newPython (@($stateScript,'--config',$config,'--write',$baseline)+$stateFlags)
         } else {
             Stop-PageManagerRuntime -StateDirectory $StateDirectory -TaskName $TaskName
             $stopped = $true
@@ -150,7 +167,14 @@ try {
             Invoke-Checked $newPython @($videoScript,'cleanup','--config',$config,'--journal',$videoJournal)
             Remove-Item -LiteralPath $maintenance
             @{current=$ExpectedCommit;previous=$null;failed=$null} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $StateDirectory 'updater.json') -Encoding UTF8
-        } else { Invoke-Checked $python @($stateScript, '--config', $config, '--compare', $baseline) }
+        } else {
+            Invoke-Checked $python (@($stateScript, '--config', $config, '--compare', $baseline)+$stateFlags)
+            if ($DrainScheduledJobs) {
+                $committed=$true
+                Remove-Item -LiteralPath $maintenance
+                @{current=$ExpectedCommit;previous=$null;failed=$null} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $StateDirectory 'updater.json') -Encoding UTF8
+            }
+        }
         [pscustomobject]@{ commit=$ExpectedCommit; release=$release; previous=$previous; status='healthy' } |
             ConvertTo-Json | Set-Content -LiteralPath (Join-Path $audit 'result.json') -Encoding UTF8
         Write-Host "Deployed $ExpectedCommit. Previous code and private configuration retained."
@@ -168,7 +192,8 @@ try {
             Register-ScheduledTask -TaskName $TaskName -TaskPath '\PageManager\' -Xml (Get-Content -LiteralPath $savedTask -Raw) -Force | Out-Null
             Start-PageManagerRuntime -StateDirectory $StateDirectory -TaskName $TaskName
             Wait-AppHealthy
-            if (!$VideoDestination -and (Test-Path -LiteralPath $baseline)) { Invoke-Checked $python @($stateScript, '--config', $config, '--compare', $baseline) }
+            if (!$VideoDestination -and (Test-Path -LiteralPath $baseline)) { Invoke-Checked $python (@($stateScript, '--config', $config, '--compare', $baseline)+$stateFlags) }
+            if ($DrainScheduledJobs -and (Test-Path -LiteralPath $maintenance)) { Remove-Item -LiteralPath $maintenance }
             [pscustomobject]@{ commit=$ExpectedCommit; release=$release; previous=$previous; status='rolled_back' } |
                 ConvertTo-Json | Set-Content -LiteralPath (Join-Path $audit 'result.json') -Encoding UTF8
             Write-Warning 'Previous native task restored and healthy; protected account and Reel history retained.'
@@ -176,6 +201,9 @@ try {
             if (Test-Path -LiteralPath $maintenance) { Remove-Item -LiteralPath $maintenance }
             [pscustomobject]@{commit=$ExpectedCommit;release=$release;previous=$previous;status='healthy_cleanup_pending'} |
                 ConvertTo-Json | Set-Content -LiteralPath (Join-Path $audit 'result.json') -Encoding UTF8
+        } elseif ($DrainScheduledJobs -and (Test-Path -LiteralPath $maintenance)) {
+            # Quiescing timed out before a runtime stop; resume the running app.
+            Remove-Item -LiteralPath $maintenance
         }
         throw $failure
     }

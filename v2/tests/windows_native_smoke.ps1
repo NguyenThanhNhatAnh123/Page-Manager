@@ -58,7 +58,7 @@ try {
     Checked (Join-Path $pgBin 'createdb.exe') @('-h','127.0.0.1','-p','55433','-U','postgres','native_video_storage')
     $env:PM_TEST_DATABASE_URL = 'postgresql://postgres@127.0.0.1:55433/native_video_storage'
     $env:DATABASE_URL = $env:PM_TEST_DATABASE_URL
-    Checked $pythonExe @('-m','pytest','tests/test_video_library.py','tests/test_video_storage.py','-q')
+    Checked $pythonExe @('-m','pytest','tests/test_video_library.py','tests/test_video_storage.py','tests/test_video_uploads.py','-q')
     $env:PM_TEST_DATABASE_URL = 'postgresql://postgres@127.0.0.1:55433/postgres'
     $env:DATABASE_URL = $env:PM_TEST_DATABASE_URL
     Checked $pythonExe @('-m','pytest','tests/test_worker.py','tests/test_mcp_page_edits.py','tests/test_page_images.py','tests/test_server.py','tests/test_windows_native.py','tests/test_transfer_windows.py','tests/test_deployment.py','tests/test_public_updates.py','-q')

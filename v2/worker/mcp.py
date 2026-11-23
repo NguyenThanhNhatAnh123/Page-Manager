@@ -177,7 +177,10 @@ def install(app,workspace_for,create_reel,reel_action):
                 elif name=='pages_images_current':data=await current_page_images(workspace,parsed)
                 elif name=='pages_reels_upload_info':
                     from page_manager.reel_assets import MAX_VIDEO_BYTES
-                    data={'path':'/api/reels/assets','method':'POST','content_type':'application/octet-stream','filename_header':'X-Filename','authorization':'Bearer <same personal MCP token>','max_video_bytes':MAX_VIDEO_BYTES}
+                    from .video_uploads import MAX_PER_OWNER,IDLE_SECONDS
+                    data={'path':'/api/reels/assets','method':'POST','content_type':'application/octet-stream','filename_header':'X-Filename','authorization':'Bearer <same personal MCP token>','max_video_bytes':MAX_VIDEO_BYTES,
+                          'max_parallel_uploads_per_account':MAX_PER_OWNER,'upload_idle_timeout_seconds':IDLE_SECONDS,
+                          'instructions':'Gửi byte video thật, không gửi đường dẫn hay JSON. Ưu tiên tải lần lượt; nếu nhận 429, chờ Retry-After. Nếu mất phản hồi, kiểm tra thư viện trước khi thử lại; tải video không tự tạo bài đăng.'}
                 elif name=='pages_connection_create':
                     from .app import connection_create
                     data=await connection_create(request,parsed)

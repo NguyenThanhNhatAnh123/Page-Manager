@@ -47,8 +47,10 @@ def validate_settings(config, release, previous):
     return values
 
 
-def snapshot(config):
+def snapshot(config, *, drained=False):
     values = dict(dotenv_values(config))
+    if drained and not (values.get('PM_VIDEO_MAINTENANCE_FILE') and Path(values['PM_VIDEO_MAINTENANCE_FILE']).is_file()):
+        raise ValueError('Reviewed deployment requires the maintenance marker throughout verification')
     with psycopg.connect(values['DATABASE_URL'], prepare_threshold=None) as db:
         db.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         version = int(db.execute('SHOW server_version_num').fetchone()[0])
@@ -58,6 +60,7 @@ def snapshot(config):
         if len(users) != 20:
             raise ValueError('Expected the restored 20-account installation')
         result = {'users': users, 'completed': {}, 'assets': {}, 'bindings': {}}
+        if drained:result['all_jobs']={}
         result['mcp'] = db.execute('SELECT id,user_id,digest,can_write,expires_at,revoked_at FROM public.pm_mcp_tokens ORDER BY id').fetchall()
         for user in users:
             owner = str(user[0])
@@ -68,6 +71,10 @@ def snapshot(config):
             result['completed'][owner] = [row[0] for row in db.execute(sql.SQL(
                 "SELECT row_to_json(j)::text FROM {}.reel_jobs j WHERE status='completed' ORDER BY id"
             ).format(namespace)).fetchall()]
+            if drained:
+                result['all_jobs'][owner]=[row[0] for row in db.execute(sql.SQL(
+                    'SELECT row_to_json(j)::text FROM {}.reel_jobs j ORDER BY id'
+                ).format(namespace)).fetchall()]
             result['assets'][owner] = [row[0] for row in db.execute(sql.SQL(
                 'SELECT row_to_json(a)::text FROM {}.reel_assets a ORDER BY id'
             ).format(namespace)).fetchall()]
@@ -80,8 +87,12 @@ def snapshot(config):
             active = db.execute(sql.SQL(
                 "SELECT COUNT(*) FROM {}.reel_jobs WHERE status NOT IN ('completed','cancelled','failed')"
             ).format(namespace)).fetchone()[0]
-            if active:
+            if active and not drained:
                 raise ValueError('Active or unresolved Reel jobs: postpone automatic deployment')
+            if drained and db.execute(sql.SQL(
+                "SELECT COUNT(*) FROM {}.reel_jobs WHERE status IN ('starting','uploading','processing','publishing','verifying')"
+            ).format(namespace)).fetchone()[0]:
+                raise ValueError('Network Reel operation still active; do not stop or deploy')
     return {'format': 1, 'fingerprint': hashlib.sha256(json.dumps(result, sort_keys=True, default=str).encode()).hexdigest(),
             'config_sha256': hashlib.sha256(Path(config).read_bytes()).hexdigest()}
 
@@ -93,10 +104,11 @@ if __name__ == '__main__':
     parser.add_argument('--previous', type=Path)
     parser.add_argument('--write', type=Path)
     parser.add_argument('--compare', type=Path)
+    parser.add_argument('--drained', action='store_true', help='Operator-only: maintenance marker and zero active network jobs required')
     args = parser.parse_args()
     if args.release and args.previous:
         validate_settings(args.config, args.release, args.previous)
-    current = snapshot(args.config)
+    current = snapshot(args.config,drained=args.drained)
     if args.write:
         with args.write.open('x', encoding='utf-8') as stream:
             json.dump(current, stream)
