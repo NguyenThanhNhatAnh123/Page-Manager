@@ -85,7 +85,11 @@ async def test_gateway_returns_idle_upload_error_before_the_client_finishes_send
         head=await asyncio.wait_for(reader.readuntil(b'\r\n\r\n'),30)
         while head.startswith(b'HTTP/1.1 100 '):head=await asyncio.wait_for(reader.readuntil(b'\r\n\r\n'),30)
         assert head.startswith(b'HTTP/1.1 408 '),head
-        body=await asyncio.wait_for(reader.read(),5)
+        response_headers=httpx.Headers([line.split(b':',1) for line in head.split(b'\r\n')[1:] if b':' in line])
+        length=int(response_headers['content-length']);assert 0<length<4096
+        # HTTP frames the response independently from the unfinished request.
+        # Do not wait for TCP EOF while the peer still has request bytes owed.
+        body=await asyncio.wait_for(reader.readexactly(length),5)
         assert b'video_upload_timeout' in body,body
         assert (await client.get('/healthz')).json()['ok']
     finally:
