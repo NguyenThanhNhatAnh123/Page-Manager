@@ -22,6 +22,12 @@ function Checked([string]$Exe, [string[]]$Arguments) {
     & $Exe @Arguments
     if ($LASTEXITCODE) { throw "Deployment integration command failed: $([IO.Path]::GetFileName($Exe))" }
 }
+function Deploy-Checked([string]$Script,[string[]]$DeploymentArguments) {
+    # Production's elevated/SYSTEM launcher uses Windows PowerShell 5.1, whose
+    # native argument quoting differs from the hosted runner's default pwsh.
+    $shell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    Checked $shell (@('-NoProfile','-NonInteractive','-ExecutionPolicy','RemoteSigned','-File',$Script)+$DeploymentArguments)
+}
 function Wait-Healthy {
     $deadline = [DateTime]::UtcNow.AddSeconds(100)
     do {
@@ -89,7 +95,7 @@ with central() as db:
     Start-PageManagerRuntime -StateDirectory $state -TaskName $taskName
     Wait-Healthy
     $deploy = Join-Path $app 'server\windows\Deploy-Release.ps1'
-    & $deploy -Bundle $bundle -ExpectedCommit $env:GITHUB_SHA -ExpectedSha256 $checksum -StateDirectory $state -TaskName $taskName
+    Deploy-Checked $deploy @('-Bundle',$bundle,'-ExpectedCommit',$env:GITHUB_SHA,'-ExpectedSha256',$checksum,'-StateDirectory',$state,'-TaskName',$taskName)
     Wait-Healthy
     $healthyRelease = (Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $taskName).Actions[0].WorkingDirectory
     if ($healthyRelease -eq $app) { throw 'Deployment did not switch the task to the new release.' }
@@ -112,8 +118,8 @@ with zipfile.ZipFile(sys.argv[2],'w',zipfile.ZIP_DEFLATED) as output:
     $brokenHash = (Get-FileHash -LiteralPath $broken -Algorithm SHA256).Hash.ToLowerInvariant()
     $rejected = $false
     try {
-        & $deploy -Bundle $broken -ExpectedCommit $env:GITHUB_SHA -ExpectedSha256 $brokenHash `
-            -StateDirectory $state -TaskName $taskName -HealthTimeoutSeconds 15
+        Deploy-Checked $deploy @('-Bundle',$broken,'-ExpectedCommit',$env:GITHUB_SHA,'-ExpectedSha256',$brokenHash,
+            '-StateDirectory',$state,'-TaskName',$taskName,'-HealthTimeoutSeconds','15')
     } catch { $rejected = $true }
     if (!$rejected) { throw 'The injected worker failure was incorrectly accepted.' }
     Wait-Healthy
@@ -125,14 +131,14 @@ with zipfile.ZipFile(sys.argv[2],'w',zipfile.ZIP_DEFLATED) as output:
     $videoDestination=Join-Path $root 'private-videos'
     $rejected=$false
     try {
-        & $deploy -Bundle $broken -ExpectedCommit $env:GITHUB_SHA -ExpectedSha256 $brokenHash `
-            -StateDirectory $state -TaskName $taskName -HealthTimeoutSeconds 15 -VideoDestination $videoDestination
+        Deploy-Checked $deploy @('-Bundle',$broken,'-ExpectedCommit',$env:GITHUB_SHA,'-ExpectedSha256',$brokenHash,
+            '-StateDirectory',$state,'-TaskName',$taskName,'-HealthTimeoutSeconds','15','-VideoDestination',$videoDestination)
     } catch { $rejected=$true }
     if (!$rejected) { throw 'Broken storage migration was incorrectly accepted.' }
     Wait-Healthy
     if ((Get-FileHash -LiteralPath $config).Hash -ne $configHash) { throw 'Storage rollback failed to restore exact private config.' }
-    & $deploy -Bundle $bundle -ExpectedCommit $env:GITHUB_SHA -ExpectedSha256 $checksum `
-        -StateDirectory $state -TaskName $taskName -VideoDestination $videoDestination
+    Deploy-Checked $deploy @('-Bundle',$bundle,'-ExpectedCommit',$env:GITHUB_SHA,'-ExpectedSha256',$checksum,
+        '-StateDirectory',$state,'-TaskName',$taskName,'-VideoDestination',$videoDestination)
     Wait-Healthy
     $verifyStorage=@'
 import os,sys
@@ -160,10 +166,11 @@ with central() as db:
     # Reviewed code-only updates may retain future schedules/needs_review jobs;
     # automatic preflight still rejects them. Exercise rollback in that mode too.
     $seedPending=@'
-import os,sys
+import hashlib,os,sys
 from uuid import uuid4
 from dotenv import dotenv_values
 os.environ.update(dict(dotenv_values(sys.argv[1])))
+assert os.environ['DATABASE_URL']==os.environ['PM_TEST_DATABASE_URL']
 from worker.app import Registry,central
 with central() as db:owner=db.execute('SELECT id FROM pm_users ORDER BY id LIMIT 1').fetchone()['id']
 store=Registry().get(owner).manager.store
@@ -171,9 +178,15 @@ old=store.reel_jobs()[0]
 keys=('page_id','page_name','connection_id','connection_label','token_revision','asset_id','asset_name','caption','timezone','fold','approval_policy')
 for state in ('scheduled','needs_review'):
     values={key:old[key] for key in keys}
-    values.update(request_id=str(uuid4()),scheduled_at='2050-01-01T12:00:00+00:00',scheduled_local='2050-01-01T12:00:00')
-    job,_=store.reel_create(values)
-    if state!='scheduled':store.reel_update(job['id'],status=state)
+    operation=str(uuid4())
+    values.update(request_id=operation,payload_hash=hashlib.sha256(operation.encode()).hexdigest(),status=state,
+                  scheduled_at='2050-01-01T12:00:00+00:00',scheduled_local='2050-01-01T12:00:00',
+                  message='Disconnected disposable deployment fixture',created_at=old['created_at'],updated_at=old['updated_at'])
+    # Seed only this disposable database directly. The provider stays disconnected;
+    # production connection/eligibility guards are never disabled for a test.
+    names=tuple(values)
+    with store.connect() as db:
+        db.execute('INSERT INTO reel_jobs('+','.join(names)+') VALUES('+','.join('?' for _ in names)+')',tuple(values[name] for name in names))
 '@
     Checked $python @('-c',$seedPending,$config)
     $drainDeploy=Join-Path ((Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $taskName).Actions[0].WorkingDirectory) 'server\windows\Deploy-Release.ps1'
@@ -183,14 +196,14 @@ for state in ('scheduled','needs_review'):
     $healthyRelease=(Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $taskName).Actions[0].WorkingDirectory
     $rejected=$false
     try {
-        & $drainDeploy -Bundle $broken -ExpectedCommit $env:GITHUB_SHA -ExpectedSha256 $brokenHash `
-            -StateDirectory $state -TaskName $taskName -HealthTimeoutSeconds 15 -DrainScheduledJobs
+        Deploy-Checked $drainDeploy @('-Bundle',$broken,'-ExpectedCommit',$env:GITHUB_SHA,'-ExpectedSha256',$brokenHash,
+            '-StateDirectory',$state,'-TaskName',$taskName,'-HealthTimeoutSeconds','15','-DrainScheduledJobs')
     } catch { $rejected=$true }
     if (!$rejected) { throw 'Broken reviewed code update was accepted.' }
     Wait-Healthy
     if ((Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $taskName).Actions[0].WorkingDirectory -ne $healthyRelease) { throw 'Reviewed update rollback failed.' }
-    & $drainDeploy -Bundle $bundle -ExpectedCommit $env:GITHUB_SHA -ExpectedSha256 $checksum `
-        -StateDirectory $state -TaskName $taskName -DrainScheduledJobs
+    Deploy-Checked $drainDeploy @('-Bundle',$bundle,'-ExpectedCommit',$env:GITHUB_SHA,'-ExpectedSha256',$checksum,
+        '-StateDirectory',$state,'-TaskName',$taskName,'-DrainScheduledJobs')
     Wait-Healthy
     if ((Get-FileHash -LiteralPath $config).Hash -ne $storageConfigHash) { throw 'Reviewed code update rewrote private configuration.' }
     $verifyPending=@'

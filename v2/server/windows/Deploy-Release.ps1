@@ -92,7 +92,7 @@ try {
     if ($DrainScheduledJobs) {
         $stateScript=Join-Path $newApp 'scripts\deployment_state.py'
         $stateFlags=@('--drained')
-        Invoke-Checked $python @('-c', 'import sys;sys.path.insert(0,sys.argv[1]);from scripts.deployment_state import validate_settings;from pathlib import Path;v=validate_settings(*sys.argv[2:5]);assert Path(v.get("PM_VIDEO_MAINTENANCE_FILE",""))==Path(sys.argv[5]),"Configured maintenance marker required"', $newApp, $config, $newApp, $previous, $maintenance)
+        Invoke-Checked $python @('-c', 'import sys;sys.path.insert(0,sys.argv[1]);from scripts.deployment_state import validate_settings;from pathlib import Path;v=validate_settings(*sys.argv[2:5]);assert Path(v.get(''PM_VIDEO_MAINTENANCE_FILE'',''''))==Path(sys.argv[5]),''Configured maintenance marker required''', $newApp, $config, $newApp, $previous, $maintenance)
         if (Test-Path -LiteralPath $maintenance) { throw 'An earlier maintenance requires inspection.' }
         if (!(Test-Path -LiteralPath $pause)) { [IO.File]::WriteAllText($pause,'Reviewed code deployment'); $pausedHere=$true }
     }
