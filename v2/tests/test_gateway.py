@@ -10,6 +10,7 @@ from argon2 import PasswordHasher
 import json
 from uuid import uuid4,uuid5,NAMESPACE_DNS
 from io import BytesIO
+from pathlib import Path
 from PIL import Image
 
 URL=os.environ.get('PM_TEST_GATEWAY_URL')
@@ -34,6 +35,39 @@ async def login(username):
     assert response.status_code==200,response.text
     user=response.json()['user'];client.headers['X-CSRF-Token']=user['csrf_token']
     return client,user
+
+
+async def test_gateway_upload_backpressure_forwards_retry_after_and_remains_healthy(accounts):
+    client,user=await login('test_user17')
+    raw=b'\x00\x00\x00\x18ftypisom\x00\x00\x00\x00isommp42'+b'gateway-backpressure-payload'
+    headers={'Content-Type':'application/octet-stream','X-Filename':'gateway-stream.mp4','Content-Length':str(len(raw))}
+    release=asyncio.Event()
+    warmup=await client.post('/api/reels/assets',headers=headers,content=raw)
+    assert warmup.status_code==201,warmup.text
+    # Find only the disposable account's private test directory. Seeing both
+    # partial files confirms the Rust stream reached the worker before probing.
+    with psycopg.connect(os.environ['PM_TEST_DATABASE_URL'],prepare_threshold=None) as db:
+        namespace=psycopg.sql.Identifier('w_'+user['id'].replace('-',''))
+        stored=db.execute(psycopg.sql.SQL('SELECT path FROM {}.reel_assets WHERE id=%s').format(namespace),(warmup.json()['asset']['id'],)).fetchone()
+    root=Path(stored[0]).parent
+    async def slow():
+        yield raw[:24];await release.wait();yield raw[24:]
+    tasks=[asyncio.create_task(client.post('/api/reels/assets',headers=headers,content=slow())) for _ in range(2)]
+    try:
+        async def admitted():
+            while len(list(root.glob('.*.upload')))<2:await asyncio.sleep(.05)
+        await asyncio.wait_for(admitted(),10)
+        response=await asyncio.wait_for(client.post('/api/reels/assets',headers=headers,content=raw),5)
+        assert response.status_code==429,response.text
+        assert response.headers['retry-after']=='5' and response.json()['code']=='video_upload_busy'
+        assert (await client.get('/healthz')).json()['ok']
+    finally:
+        release.set()
+        results=await asyncio.gather(*tasks,return_exceptions=True)
+        await client.aclose()
+    assert all(isinstance(result,httpx.Response) and result.status_code==201 for result in results),results
+    assert results[0].json()['asset']['id']==results[1].json()['asset']['id']
+    assert not list(root.glob('.*.upload'))
 
 
 async def test_twenty_simultaneous_logins_are_isolated_and_enqueue_sync(accounts):

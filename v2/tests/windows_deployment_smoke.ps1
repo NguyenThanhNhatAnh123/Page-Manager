@@ -156,6 +156,57 @@ with central() as db:
         assert not db.execute('SELECT 1 FROM "'+schema+'".reel_jobs WHERE status<>\'completed\'').fetchone()
 '@
     Checked $python @('-c',$verifyStorage,$config,$videoDestination)
+    $storageConfigHash=(Get-FileHash -LiteralPath $config).Hash
+    # Reviewed code-only updates may retain future schedules/needs_review jobs;
+    # automatic preflight still rejects them. Exercise rollback in that mode too.
+    $seedPending=@'
+import os,sys
+from uuid import uuid4
+from dotenv import dotenv_values
+os.environ.update(dict(dotenv_values(sys.argv[1])))
+from worker.app import Registry,central
+with central() as db:owner=db.execute('SELECT id FROM pm_users ORDER BY id LIMIT 1').fetchone()['id']
+store=Registry().get(owner).manager.store
+old=store.reel_jobs()[0]
+keys=('page_id','page_name','connection_id','connection_label','token_revision','asset_id','asset_name','caption','timezone','fold','approval_policy')
+for state in ('scheduled','needs_review'):
+    values={key:old[key] for key in keys}
+    values.update(request_id=str(uuid4()),scheduled_at='2050-01-01T12:00:00+00:00',scheduled_local='2050-01-01T12:00:00')
+    job,_=store.reel_create(values)
+    if state!='scheduled':store.reel_update(job['id'],status=state)
+'@
+    Checked $python @('-c',$seedPending,$config)
+    $drainDeploy=Join-Path ((Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $taskName).Actions[0].WorkingDirectory) 'server\windows\Deploy-Release.ps1'
+    $stateScript=Join-Path ((Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $taskName).Actions[0].WorkingDirectory) 'scripts\deployment_state.py'
+    & $python $stateScript --config $config
+    if ($LASTEXITCODE -eq 0) { throw 'Automatic preflight accepted unresolved jobs.' }
+    $healthyRelease=(Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $taskName).Actions[0].WorkingDirectory
+    $rejected=$false
+    try {
+        & $drainDeploy -Bundle $broken -ExpectedCommit $env:GITHUB_SHA -ExpectedSha256 $brokenHash `
+            -StateDirectory $state -TaskName $taskName -HealthTimeoutSeconds 15 -DrainScheduledJobs
+    } catch { $rejected=$true }
+    if (!$rejected) { throw 'Broken reviewed code update was accepted.' }
+    Wait-Healthy
+    if ((Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $taskName).Actions[0].WorkingDirectory -ne $healthyRelease) { throw 'Reviewed update rollback failed.' }
+    & $drainDeploy -Bundle $bundle -ExpectedCommit $env:GITHUB_SHA -ExpectedSha256 $checksum `
+        -StateDirectory $state -TaskName $taskName -DrainScheduledJobs
+    Wait-Healthy
+    if ((Get-FileHash -LiteralPath $config).Hash -ne $storageConfigHash) { throw 'Reviewed code update rewrote private configuration.' }
+    $verifyPending=@'
+import os,sys
+from pathlib import Path
+from dotenv import dotenv_values
+values=dict(dotenv_values(sys.argv[1]));os.environ.update(values)
+assert not Path(values['PM_VIDEO_MAINTENANCE_FILE']).exists()
+assert not (Path(sys.argv[1]).parent/'updates.paused').exists()
+from worker.app import Registry,central
+with central() as db:owner=db.execute('SELECT id FROM pm_users ORDER BY id LIMIT 1').fetchone()['id']
+jobs=Registry().get(owner).manager.store.reel_jobs()
+assert sorted(job['status'] for job in jobs)==['completed','needs_review','scheduled']
+assert next(job for job in jobs if job['status']=='completed')['video_id']=='123456789'
+'@
+    Checked $python @('-c',$verifyPending,$config)
     Write-Host 'Real SYSTEM deployment and failed-start rollback passed with configuration/read-only mode preserved.'
 } finally {
     if ($taskCreated) {

@@ -40,6 +40,7 @@ from .catalog import ranked_pages,calendar_groups
 from .sync_schedule import interval_hours,enqueue_due
 from .page_images import PageImageCache
 from .video_library import VideoLibrary,video_workspace,retention_days,retention_loop,assert_directory,maintenance
+from .video_uploads import VideoUploads,UploadTimedOut,receiving
 
 
 def central():return psycopg.connect(os.environ['DATABASE_URL'],row_factory=dict_row,connect_timeout=5,prepare_threshold=None)
@@ -82,6 +83,7 @@ class Registry:
         self.publish_slots=asyncio.Semaphore(4);self.read_slots=asyncio.Semaphore(6);self.analytics_slots=asyncio.Semaphore(2)
         self.image_slots=asyncio.Semaphore(2)
         self.sync_slots=asyncio.Semaphore(2)
+        self.video_uploads=VideoUploads()
         self.last_tick=0.;self.closing=False;self.error=False;self.lease=None;self.next_auto_check=0.
     def get(self,owner):
         if owner not in self.workspaces:self.workspaces[owner]=Workspace(owner,self)
@@ -214,7 +216,14 @@ async def authenticate(request,call_next):
 
 
 @app.exception_handler(AppError)
-async def app_error(_,error):return JSONResponse({'detail':error.detail,'code':error.code},status_code=error.status_code)
+async def app_error(_,error):
+    return JSONResponse({'detail':error.detail,'code':error.code},status_code=error.status_code,
+                        headers={'Retry-After':'5'} if error.code=='video_upload_busy' else None)
+
+
+@app.exception_handler(UploadTimedOut)
+async def upload_timeout(_,error):
+    return JSONResponse({'detail':str(error),'code':'video_upload_timeout'},status_code=408)
 
 
 @app.exception_handler(RequestValidationError)
@@ -385,10 +394,18 @@ async def upload(request:Request):
     length=request.headers.get('content-length')
     try:length=int(length) if length else None
     except ValueError:raise AppError('Dung lượng không hợp lệ.','invalid_input',422) from None
-    async with ws(request).lock:
-        used=ws(request).assets.used_bytes()
-        if used+(length or MAX_VIDEO_BYTES)>int(os.environ.get('PM_QUOTA_BYTES',20*1024**3)):raise AppError('Kho video đã đạt giới hạn dung lượng.','quota_exceeded',413)
-        return {'asset':await ws(request).assets.ingest(request.stream(),unquote(name,errors='strict'),content_length=length)}
+    if length is not None:
+        if length<=0:raise ReelAssetError('Kích thước video không hợp lệ.')
+        if length>MAX_VIDEO_BYTES:raise ReelAssetTooLarge('Video vượt quá giới hạn dung lượng được phép.')
+    workspace=ws(request)
+    with registry.video_uploads.reserve(workspace.owner,length or MAX_VIDEO_BYTES):
+        # Only the quota check is serialized. Reservations include uploads whose
+        # bodies are still arriving, including streams with no declared length.
+        async with workspace.lock:
+            used=await asyncio.to_thread(workspace.assets.used_bytes)
+            if used+registry.video_uploads.reserved(workspace.owner)>int(os.environ.get('PM_QUOTA_BYTES',20*1024**3)):
+                raise AppError('Kho video đã đạt giới hạn dung lượng.','quota_exceeded',413)
+        return {'asset':await workspace.assets.ingest(receiving(request.stream(),workspace.owner),unquote(name,errors='strict'),content_length=length)}
 
 
 @app.get('/api/reels/assets/{asset_id}/video')

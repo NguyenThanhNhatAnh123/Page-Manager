@@ -39,11 +39,18 @@ Với cài đặt không tương tác, -DatabaseAdminPasswordFile phải trỏ f
 - Trạng thái updater: updater.json; log: logs\updater.log; audit và XML task cũ: deployments\<id>.
 - App Stop có chủ đích được tôn trọng: updater không bật lại task đã bị operator Stop.
 - CD dừng chờ nếu có job Reel chưa hoàn tất/hủy/thất bại, hoặc thay migration/provision.py/legacy store.py/postgres.py. Những thay đổi schema cần kế hoạch migration riêng.
+- Với cập nhật code cần thực hiện khi còn lịch tương lai/needs_review, operator có thể dùng `Deploy-Release.ps1 -DrainScheduledJobs` cùng bundle/commit/SHA256 đã qua CI. Chế độ này yêu cầu marker bảo trì đã cấu hình ở `PM_VIDEO_MAINTENANCE_FILE`, chặn thao tác ghi mới, đợi mọi lượt gọi Meta đang chạy kết thúc rồi chuyển task. Nó so sánh toàn bộ hàng job (kể cả lịch tương lai), asset, tài khoản/token và bytes cấu hình trước/sau; không đổi trạng thái để ép rảnh. Có thử rollback SYSTEM trong CI. Không dùng chung `-VideoDestination`; updater tự động không truyền cờ này.
 - Fingerprint giữ UUID/tài khoản/password hash/role/trạng thái, credential MCP (bỏ last_used), ID Page, nguồn token, toàn bộ hàng Reel completed (request/checkpoint/video ID), metadata asset và bytes server.env. Tránh quản trị tài khoản/token trong khoảng chuyển release.
 - Để retry SHA đã rollback sau khi sửa hạ tầng, xem audit, kiểm tra app cũ khỏe rồi bỏ trường failed trong updater.json. Code lỗi nên sửa bằng commit mới.
 - Mất điện/kill giữa lúc chuyển task: kiểm tra stop.request, task hiện tại và previous-task.xml trước khi khởi động lại. Không xóa dữ liệu hoặc restore database để sửa lỗi code.
 
 CD không thay backup. Giữ backup dữ liệu/media cùng đúng khóa gốc bằng kênh riêng. Một máy chủ cần nguồn điện/mạng liên tục; Task Scheduler/service không tạo khả năng failover phần cứng.
+
+## Tải video
+
+HTTP `POST /api/reels/assets` nhận byte video với personal MCP token hoặc phiên web. Mỗi tài khoản có tối đa hai lượt tải đồng thời và toàn worker có tối đa 20; vượt giới hạn trả 429 kèm `Retry-After: 5` ngay, không giữ request chờ trong hàng đợi. Video đang tải được tính vào quota; luồng không khai báo Content-Length dự trù tối đa 1 GiB. Không có dữ liệu mới trong 20 giây trả 408 `video_upload_timeout` và dọn tệp tạm. Client nên tải lần lượt; sau mất phản hồi kiểm tra thư viện trước khi thử lại. Upload không tự đăng Reel và dedup vẫn giữ ID cũ.
+
+Giới hạn 1 GiB là của ứng dụng; ingress còn chịu giới hạn dung lượng và timeout riêng của gói Cloudflare. Khi kiểm tra 502/524 cần ghi nhận thời điểm, tài khoản, dung lượng, CF-Ray và thử đường loopback so với public; một lần health thành công không chứng minh tất cả lượt upload thành công.
 
 ## SSH tùy chọn
 
