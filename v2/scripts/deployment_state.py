@@ -11,7 +11,7 @@ import psycopg
 from psycopg import sql
 
 
-def validate_settings(config, release, previous):
+def validate_settings(config, release, previous, *, reviewed_postgres_adapter=None):
     values = dict(dotenv_values(config))
     if (values.get('PM_NATIVE_SERVER') != '1'
             or values.get('PM_LISTEN') != '127.0.0.1:8020'
@@ -42,6 +42,17 @@ def validate_settings(config, release, previous):
         return {path.relative_to(root.parent).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
                 for path in paths}
     old, new = migrations(previous), migrations(release)
+    if reviewed_postgres_adapter is not None:
+        # An operator may explicitly review a code-only adapter replacement.
+        # Both exact file hashes are required; every schema/store file remains
+        # protected. Automatic CD never supplies this argument.
+        adapter='meta-page-manager/backend/page_manager/postgres.py'
+        if (not isinstance(reviewed_postgres_adapter,str)
+                or not re.fullmatch(r'[0-9a-f]{64}:[0-9a-f]{64}',reviewed_postgres_adapter)
+                or reviewed_postgres_adapter != old.get(adapter,'')+':'+new.get(adapter,'')):
+            raise ValueError('Reviewed PostgreSQL adapter hashes do not match')
+        old={name:digest for name,digest in old.items() if name!=adapter}
+        new={name:digest for name,digest in new.items() if name!=adapter}
     if not old or old != new:
         raise ValueError('Migration changes require a separate reviewed database deployment')
     return values

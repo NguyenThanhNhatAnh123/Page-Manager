@@ -2,13 +2,94 @@
 
 Each owner has a separate schema. Only validated UUID-derived identifiers enter
 search_path. SQLite remains supported by the original standalone application.
+
+Connections come from one bounded pool per DSN. Every checkout re-establishes
+the tenant search_path inside its transaction, and every checkin resets row
+factory, autocommit and search_path so no state leaks between schemas. Long
+lived advisory-lock leases must use their own raw connection, never the pool.
 """
+import atexit
+import asyncio
 from contextlib import contextmanager
+import os
 import re
 import sqlite3
+import threading
+import time
 
 import psycopg
 from psycopg.rows import dict_row
+
+from psycopg_pool import ConnectionPool,PoolTimeout
+
+_pools={}
+_background_slots={}
+_pools_guard=threading.Lock()
+
+
+def pool_size():
+    try:size=int(os.environ.get('PM_PG_POOL_SIZE','24'))
+    except ValueError:size=24
+    # enqueue_due holds a central checkout while opening a workspace one, so
+    # a pool of one connection could deadlock; two is the safe minimum.
+    return size if 2<=size<=50 else 24
+
+
+def pool_timeout():
+    try:timeout=float(os.environ.get('PM_PG_POOL_TIMEOUT','10'))
+    except ValueError:timeout=10.
+    return timeout if 0<timeout<=60 else 10.
+
+
+def _reset(raw):
+    raw.row_factory=dict_row
+    if raw.autocommit:raw.autocommit=False
+    raw.execute('RESET search_path')
+    raw.commit()
+
+
+def _pool(dsn):
+    with _pools_guard:
+        pool=_pools.get(dsn)
+        if pool is None or pool.closed:
+            size=pool_size()
+            pool=ConnectionPool(dsn,min_size=0,max_size=size,timeout=pool_timeout(),open=True,reset=_reset,
+                kwargs={'row_factory':dict_row,'connect_timeout':5,'prepare_threshold':None})
+            _pools[dsn]=pool
+            # Limit background checkouts, including nested ones, so synchronous
+            # scheduler work on the event loop retains four available slots.
+            _background_slots[dsn]=threading.BoundedSemaphore(size-(4 if size>=8 else 0))
+        return pool,_background_slots[dsn]
+
+
+@contextmanager
+def pooled_connection(dsn):
+    pool,slots=_pool(dsn)
+    try:asyncio.get_running_loop();foreground=True
+    except RuntimeError:foreground=False
+    timeout=pool_timeout();acquired=False
+    started=time.monotonic()
+    if not foreground:
+        acquired=slots.acquire(timeout=timeout)
+        if not acquired:raise PoolTimeout('Background PostgreSQL capacity timed out')
+    try:
+        # Even an unexpected foreground-only burst must fail promptly instead
+        # of parking health checks behind a ten-second pool wait.
+        remaining=max(0.001,timeout-(time.monotonic()-started))
+        with pool.connection(timeout=min(remaining,0.25) if foreground else remaining) as raw:
+            raw.row_factory=dict_row
+            yield raw
+    finally:
+        if acquired:slots.release()
+
+
+def close_pools():
+    with _pools_guard:
+        pools=list(_pools.values());_pools.clear();_background_slots.clear()
+    for pool in pools:pool.close()
+
+
+atexit.register(close_pools)
 
 
 class Row(dict):
@@ -66,6 +147,15 @@ class Database:
             raise sqlite3.IntegrityError('PostgreSQL constraint conflict') from error
         rows=cursor.fetchall() if cursor.description else []
         return Cursor(rows,cursor.rowcount,rows[0]['id'] if serial and rows else None)
+    def executemany(self,sql,rows):
+        rows=[tuple(row) for row in rows]
+        if not rows:return Cursor()
+        try:
+            with self.raw.cursor() as cursor:
+                cursor.executemany(translate(sql),rows)
+                return Cursor((),cursor.rowcount)
+        except psycopg.IntegrityError as error:
+            raise sqlite3.IntegrityError('PostgreSQL constraint conflict') from error
     def executescript(self,sql):
         for statement in sql.split(';'):
             if statement.strip():self.execute(statement.strip())
@@ -75,7 +165,7 @@ class Database:
 def connection(dsn,namespace):
     if not isinstance(namespace,str) or not re.fullmatch(r'w_[a-f0-9]{32}',namespace):
         raise ValueError('Invalid workspace namespace')
-    with psycopg.connect(dsn,row_factory=dict_row,connect_timeout=5,prepare_threshold=None) as raw:
+    with pooled_connection(dsn) as raw:
         raw.execute(f'CREATE SCHEMA IF NOT EXISTS "{namespace}"')
         raw.execute(f'SET LOCAL search_path TO "{namespace}"')
         yield Database(raw)
