@@ -31,7 +31,7 @@ sys.path.insert(0,str(ROOT.parent/'meta-page-manager'/'backend'))
 from page_manager.service import PageManager
 from page_manager.errors import AppError
 from page_manager.inputs import ConnectionInput,ConnectionUpdate,PageRefresh,PageEdit,PageEditSource,PageManagementRevision
-from page_manager.postgres import prepare
+from page_manager.postgres import prepare,pooled_connection,close_pools
 from page_manager.reel_assets import TokenReelAssets,ReelAssetError,ReelAssetTooLarge,MAX_VIDEO_BYTES
 from .publication import DirectReelInput as TokenReelInput,DirectReelScheduler,ensure_meta_writes_allowed
 from page_manager.avatars import PageAvatars,AvatarUnavailable
@@ -43,7 +43,13 @@ from .video_library import VideoLibrary,video_workspace,retention_days,retention
 from .video_uploads import VideoUploads,UploadTimedOut,receiving
 
 
-def central():return psycopg.connect(os.environ['DATABASE_URL'],row_factory=dict_row,connect_timeout=5,prepare_threshold=None)
+def central():return pooled_connection(os.environ['DATABASE_URL'])
+
+
+def central_lease():
+    # The scheduler's advisory-lock lease outlives any pooled checkout, so it
+    # must be a dedicated raw connection that is never returned to the pool.
+    return psycopg.connect(os.environ['DATABASE_URL'],row_factory=dict_row,connect_timeout=5,prepare_threshold=None)
 
 
 class SecretBox:
@@ -95,38 +101,62 @@ class Registry:
         # compete with interactive requests and scheduler ticks at once.
         async with self.sync_slots:
             await self._sync(workspace,requested_at)
-    async def _sync(self,workspace,requested_at):
-        owner=workspace.owner
+    @staticmethod
+    def _claim_sync(owner,requested_at):
         with central() as db:
-            claimed=db.execute("""UPDATE public.pm_sync_requests SET status='running',started_at=now(),message=NULL
+            return db.execute("""UPDATE public.pm_sync_requests SET status='running',started_at=now(),message=NULL
                 WHERE user_id=%s AND requested_at=%s AND status='pending'
                 AND requested_at>COALESCE(processed_at,'epoch'::timestamptz)
                 AND EXISTS(SELECT 1 FROM public.pm_users WHERE id=%s AND active) RETURNING 1""",
                 (owner,requested_at,owner)).fetchone()
-        if not claimed:return
+    @staticmethod
+    def _imminent_job(workspace,cid):
+        with workspace.manager.store.connect() as db:
+            return db.execute("SELECT 1 FROM reel_jobs WHERE connection_id=? AND status='scheduled' AND scheduled_at<=? LIMIT 1",
+                (cid,(datetime.now(timezone.utc)+timedelta(minutes=2)).isoformat())).fetchone()
+    @staticmethod
+    def _finish_sync(owner,requested_at,result):
+        with central() as db:db.execute("UPDATE public.pm_sync_requests SET processed_at=%s,finished_at=now(),next_auto_at=now()+%s*interval '1 hour',status='completed',refreshed=%s,unavailable=%s,message=%s WHERE user_id=%s",(requested_at,interval_hours(),result['refreshed'],result['unavailable'],'Một số chỉ số chưa đọc được; giữ số liệu gần nhất.' if result['unavailable'] or result.get('unavailable_pages') else None,owner))
+    @staticmethod
+    def _fail_sync(owner,requested_at):
+        with central() as db:db.execute("UPDATE public.pm_sync_requests SET processed_at=%s,finished_at=now(),next_auto_at=now()+%s*interval '1 hour',status='error',message='Chưa đồng bộ được. Kiểm tra kết nối và thử lại.' WHERE user_id=%s",(requested_at,interval_hours(),owner))
+    @staticmethod
+    def _requeue_sync(owner,requested_at):
+        with central() as db:db.execute("UPDATE public.pm_sync_requests SET status='pending',started_at=NULL WHERE user_id=%s AND requested_at=%s AND status='running'",(owner,requested_at))
+    async def _sync(self,workspace,requested_at):
+        owner=workspace.owner
+        claim=asyncio.create_task(asyncio.to_thread(self._claim_sync,owner,requested_at))
         try:
+            claimed=await asyncio.shield(claim)
+            if not claimed:return
             async with workspace.sync_lock:
-                connections=workspace.manager.connections(limit=100)['items']
+                connections=(await asyncio.to_thread(workspace.manager.connections,limit=100))['items']
                 for connection in connections:
                     if connection['connected']:
-                        with workspace.manager.store.connect() as db:
-                            imminent=db.execute("SELECT 1 FROM reel_jobs WHERE connection_id=? AND status='scheduled' AND scheduled_at<=? LIMIT 1",
-                                (connection['id'],(datetime.now(timezone.utc)+timedelta(minutes=2)).isoformat())).fetchone()
+                        imminent=await asyncio.to_thread(self._imminent_job,workspace,connection['id'])
                         if not imminent:
                             with suppress(AppError):await workspace.manager.sync(connection['id'])
                 result=await workspace.analytics.refresh()
-            with central() as db:db.execute("UPDATE public.pm_sync_requests SET processed_at=%s,finished_at=now(),next_auto_at=now()+%s*interval '1 hour',status='completed',refreshed=%s,unavailable=%s,message=%s WHERE user_id=%s",(requested_at,interval_hours(),result['refreshed'],result['unavailable'],'Một số chỉ số chưa đọc được; giữ số liệu gần nhất.' if result['unavailable'] or result.get('unavailable_pages') else None,owner))
+            await asyncio.to_thread(self._finish_sync,owner,requested_at,result)
         except asyncio.CancelledError:
-            # A temporarily disabled owner can resume this durable request.
+            # The driver cannot cancel its running thread. Wait for the claim
+            # before requeuing so it cannot commit 'running' after cleanup.
+            with suppress(Exception):await claim
             with suppress(Exception):
-                with central() as db:db.execute("UPDATE public.pm_sync_requests SET status='pending',started_at=NULL WHERE user_id=%s AND requested_at=%s AND status='running'",(owner,requested_at))
+                await asyncio.to_thread(self._requeue_sync,owner,requested_at)
             raise
         except Exception:
-            with central() as db:db.execute("UPDATE public.pm_sync_requests SET processed_at=%s,finished_at=now(),next_auto_at=now()+%s*interval '1 hour',status='error',message='Chưa đồng bộ được. Kiểm tra kết nối và thử lại.' WHERE user_id=%s",(requested_at,interval_hours(),owner))
+            await asyncio.to_thread(self._fail_sync,owner,requested_at)
+    @staticmethod
+    def _poll_central():
+        with central() as db:
+            users=db.execute('SELECT id FROM public.pm_users WHERE active=TRUE ORDER BY id').fetchall()
+            pending=db.execute("SELECT s.user_id,s.requested_at FROM public.pm_sync_requests s JOIN public.pm_users u ON u.id=s.user_id WHERE u.active AND s.requested_at>COALESCE(s.processed_at,'epoch'::timestamptz)").fetchall()
+        return users,pending
     async def run(self):
         while not self.closing:
             if self.lease is not None:
-                try:self.lease.execute('SELECT 1')
+                try:await asyncio.to_thread(self.lease.execute,'SELECT 1')
                 except Exception as error:
                     self.error=True
                     self.last_error_type=type(error).__name__
@@ -137,9 +167,7 @@ class Registry:
                 if maintenance():
                     self.last_tick=time.monotonic();self.error=False;self.last_error_type=None
                     await asyncio.sleep(2);continue
-                with central() as db:
-                    users=db.execute('SELECT id FROM public.pm_users WHERE active=TRUE ORDER BY id').fetchall()
-                    pending=db.execute("SELECT s.user_id,s.requested_at FROM public.pm_sync_requests s JOIN public.pm_users u ON u.id=s.user_id WHERE u.active AND s.requested_at>COALESCE(s.processed_at,'epoch'::timestamptz)").fetchall()
+                users,pending=await asyncio.to_thread(self._poll_central)
                 active={user['id'] for user in users}
                 for owner in list(self.workspaces):
                     if owner not in active:
@@ -158,7 +186,7 @@ class Registry:
                     await asyncio.sleep(0)
                 if time.monotonic()>=self.next_auto_check:
                     self.next_auto_check=time.monotonic()+60
-                    enqueue_due(central,ready)
+                    await asyncio.to_thread(enqueue_due,central,ready)
                 for request in pending:
                     owner=request['user_id'];task=self.sync_tasks.get(owner)
                     if owner not in ready:continue
@@ -185,7 +213,7 @@ async def lifespan(app):
     if len(os.environ.get('PM_INTERNAL_KEY',''))<48:raise RuntimeError('Configure PM_INTERNAL_KEY')
     retention_days()
     if os.environ.get('PM_VIDEO_DIR'):assert_directory(os.environ['PM_VIDEO_DIR'])
-    lease=central();lease.autocommit=True
+    lease=central_lease();lease.autocommit=True
     if not lease.execute('SELECT pg_try_advisory_lock(80218021) AS locked').fetchone()['locked']:
         lease.close();raise RuntimeError('Another PageManager v2 worker already owns the scheduler')
     registry.lease=lease
@@ -199,9 +227,15 @@ async def lifespan(app):
         await registry.shutdown();task.cancel()
         with suppress(asyncio.CancelledError):await task
         lease.close()
+        close_pools()
 
 
 app=FastAPI(title='PageManager v2 private worker',lifespan=lifespan,docs_url=None,redoc_url=None,openapi_url=None)
+
+
+def _active_user(owner):
+    with central() as db:
+        return db.execute('SELECT id FROM public.pm_users WHERE id=%s AND active=TRUE',(owner,)).fetchone()
 
 
 @app.middleware('http')
@@ -215,7 +249,7 @@ async def authenticate(request,call_next):
     try:
         owner=request.headers.get('x-pm-workspace','')
         if str(UUID(owner))!=owner:raise ValueError()
-        with central() as db:user=db.execute('SELECT id FROM public.pm_users WHERE id=%s AND active=TRUE',(owner,)).fetchone()
+        user=await asyncio.to_thread(_active_user,owner)
         if not user:return JSONResponse({'detail':'Tài khoản đã bị khóa.'},status_code=403)
         request.state.workspace=registry.get(owner)
     except (ValueError,KeyError):return JSONResponse({'detail':'Kho không hợp lệ.'},status_code=403)
@@ -340,27 +374,36 @@ async def edit_page(request:Request,pid:str,body:PageEdit):
 @app.get('/api/overview')
 async def overview(request:Request):
     workspace=ws(request)
-    return {**workspace.manager.overview(),'analytics':workspace.analytics.list(limit=5),'scheduler':workspace.scheduler.status(),'sync':sync_status(workspace.owner)}
+    return {**workspace.manager.overview(),'analytics':workspace.analytics.list(limit=5),'scheduler':workspace.scheduler.status(),'sync':await sync_status(workspace.owner)}
 
 
-def sync_status(owner):
+def _sync_status(owner):
     with central() as db:row=db.execute('SELECT requested_at,started_at,finished_at,status,message,refreshed,unavailable,next_auto_at,reason FROM public.pm_sync_requests WHERE user_id=%s',(owner,)).fetchone()
     return (row or {'status':'never','refreshed':0,'unavailable':0})|{'interval_hours':interval_hours()}
 
 
+async def sync_status(owner):return await asyncio.to_thread(_sync_status,owner)
+
+
 @app.get('/api/analytics')
 async def analytics(request:Request,limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0),search:str=Query('',max_length=200),sort:str='views_desc',band:str='all'):
-    return {**ws(request).analytics.list(limit,offset,search,sort,band),'sync':sync_status(ws(request).owner)}
+    return {**ws(request).analytics.list(limit,offset,search,sort,band),'sync':await sync_status(ws(request).owner)}
+
+
+def _request_manual_sync(owner):
+    with central() as db:
+        return db.execute("SELECT pm_request_sync(%s,'manual',%s) queued",(owner,interval_hours())).fetchone()['queued']
 
 
 @app.post('/api/analytics/sync',status_code=202)
 async def analytics_sync(request:Request):
-    with central() as db:queued=db.execute("SELECT pm_request_sync(%s,'manual',%s) queued",(ws(request).owner,interval_hours())).fetchone()['queued']
-    return {'accepted':True,'queued':queued,'sync':sync_status(ws(request).owner)}
+    owner=ws(request).owner
+    queued=await asyncio.to_thread(_request_manual_sync,owner)
+    return {'accepted':True,'queued':queued,'sync':await sync_status(owner)}
 
 
 @app.get('/api/analytics/sync')
-async def analytics_sync_status(request:Request):return {'sync':sync_status(ws(request).owner)}
+async def analytics_sync_status(request:Request):return {'sync':await sync_status(ws(request).owner)}
 
 
 @app.get('/api/analytics/{video_id}/history')
@@ -505,7 +548,7 @@ async def stream(request:Request):
         for _ in range(12):
             if await request.is_disconnected():break
             workspace=ws(request)
-            data={'scheduler':workspace.scheduler.status(),'sync':sync_status(workspace.owner)}
+            data={'scheduler':workspace.scheduler.status(),'sync':await sync_status(workspace.owner)}
             yield 'event: status\ndata: '+json.dumps(data,default=str)+'\n\n'
             await asyncio.sleep(5)
     return StreamingResponse(generate(),media_type='text/event-stream',headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})

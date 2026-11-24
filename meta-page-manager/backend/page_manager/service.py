@@ -98,6 +98,12 @@ class PageManager:
         try:return self.secrets.decrypt(row['encrypted_token'])
         except Exception:raise AppError('Không đọc được token đã mã hóa bằng tài khoản Windows này.','secret_unavailable',409) from None
 
+    async def _db_call(self,operation,*args,**kwargs):
+        # Native PostgreSQL driver work must not stall the owner event loop.
+        # Preserve the standalone SQLite path and its connection semantics.
+        if self.store.database_url:return await asyncio.to_thread(operation,*args,**kwargs)
+        return operation(*args,**kwargs)
+
     def connection_public(self,row):
         count=row['page_count'] if 'page_count' in row else self.store.connection_page_count(row['id'])
         values={key:row[key] for key in ('id','label','token_type','app_id','business_id','identity_id','identity_name','status','expires_at','checked_at','synced_at','error','revision')}|{
@@ -145,7 +151,8 @@ class PageManager:
 
     async def sync(self,cid):
         async with self._lock(cid),self.capacity:
-            row=self.store.connection(cid);token=self._credential(row);revision=row['token_revision'];pages=[];identity={};complete=False;failure=None;forbidden=(token,)
+            row=await self._db_call(self.store.connection,cid)
+            token=self._credential(row);revision=row['token_revision'];pages=[];identity={};complete=False;failure=None;forbidden=(token,)
             business_scope=row['business_id'] if row['token_type']=='user' else None
             started_at=self._operation_started()
             try:
@@ -169,18 +176,19 @@ class PageManager:
             except AppError:raise
             except Exception:
                 if business_scope:
-                    self.store.sync(cid,revision,[],False,'error','Chưa lưu được kết quả xác minh phạm vi BM.',{},started_at=started_at)
+                    await self._db_call(self.store.sync,cid,revision,[],False,'error','Chưa lưu được kết quả xác minh phạm vi BM.',{},started_at=started_at)
                 raise AppError('Không lưu được token Page bằng Windows DPAPI.','secret_unavailable',409) from None
             if business_scope and (not complete or failure):
                 pages=[];complete=False;failure=failure or GraphError()
             identity={'id':numeric(identity.get('id')),'name':text(identity.get('name'),200,forbidden)}
             status=failure.status if failure else 'working'
-            self.store.sync(cid,revision,pages,complete,status,str(failure) if failure else None,identity,started_at=started_at,
+            await self._db_call(self.store.sync,cid,revision,pages,complete,status,str(failure) if failure else None,identity,started_at=started_at,
                             verified_business_id=business_scope if complete else None)
             message='Đã đồng bộ danh sách Page.' if complete else 'Đồng bộ chưa đầy đủ; giữ lại dữ liệu và liên kết đã lưu.'
             if business_scope and not complete:message='Chưa xác minh đủ Page thuộc BM đã chọn. Đồng bộ lại kết nối trước khi thao tác trên Page.'
-            self.store.event('page_sync',status,message,row['label'])
-            return {'connection':self.connection_public(self.store.connection(cid)),'pages_seen':len(pages),'complete':complete}
+            await self._db_call(self.store.event,'page_sync',status,message,row['label'])
+            saved=await self._db_call(self.store.connection,cid)
+            return {'connection':self.connection_public(saved),'pages_seen':len(pages),'complete':complete}
 
     def _pages(self,zone,**query):
         start,end=day_bounds(now(),zone)
@@ -234,9 +242,9 @@ class PageManager:
         async with self._page_lock(pid):return await self._refresh_locked(pid,body,timezone)
 
     async def _refresh_locked(self,pid,body,timezone):
-        source=self.store.source(pid,body.connection_id);cid=source['id']
+        source=await self._db_call(self.store.source,pid,body.connection_id);cid=source['id']
         async with self._lock(cid),self.capacity:
-            source=self.store.source(pid,cid);revision=source['token_revision'];token=self._credential(source)
+            source=await self._db_call(self.store.source,pid,cid);revision=source['token_revision'];token=self._credential(source)
             started_at=self._operation_started()
             try:page_token=self.secrets.decrypt(source['encrypted_page_token']) if source['encrypted_page_token'] else token
             except Exception:raise AppError('Không đọc được token Page đã mã hóa. Đồng bộ lại kết nối.','secret_unavailable',409) from None
@@ -267,9 +275,9 @@ class PageManager:
                             found[post_id]={'id':post_id,'message':text(item.get('message'),20000,forbidden) or '','created_time':created.isoformat(),'permalink_url':url(item.get('permalink_url'),True,forbidden)}
                         posts=list(found.values())
                     except GraphError as error:posts_error=str(error)
-            self.store.refresh(cid,revision,pid,details,detail_error,posts,has_more,posts_error,body.include_posts,started_at=started_at)
-            self.store.event('page_refresh','partial' if detail_error or posts_error else 'ok','Đã cập nhật bộ nhớ chi tiết Page và bài đăng; không chỉnh sửa nội dung trên Meta.',source['label'])
-        return self.page(pid,timezone)
+            await self._db_call(self.store.refresh,cid,revision,pid,details,detail_error,posts,has_more,posts_error,body.include_posts,started_at=started_at)
+            await self._db_call(self.store.event,'page_refresh','partial' if detail_error or posts_error else 'ok','Đã cập nhật bộ nhớ chi tiết Page và bài đăng; không chỉnh sửa nội dung trên Meta.',source['label'])
+        return await self._db_call(self.page,pid,timezone)
 
     def _edit_source(self,pid,cid,revision=None):
         if not numeric(pid):raise AppError('ID Page không hợp lệ.','invalid_page',422)
@@ -288,7 +296,7 @@ class PageManager:
         except Exception:raise AppError('Không đọc được token Page an toàn. Đồng bộ lại kết nối.','secret_unavailable',409) from None
         identity=await graph.identity(page_token)
         if identity.get('id')!=pid:raise AppError('Token không xác nhận đúng Page đã chọn. Chưa gửi chỉnh sửa.','wrong_page_token',409)
-        self._edit_source(pid,source['id'],source['token_revision'])
+        await self._db_call(self._edit_source,pid,source['id'],source['token_revision'])
         return page_token,(token,page_token)
 
     async def edit_options(self,pid,body):

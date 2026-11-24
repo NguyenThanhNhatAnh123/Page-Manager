@@ -6,6 +6,10 @@ import re
 
 ID=re.compile(r'[0-9]{1,32}\Z')
 METRICS=('fb_reels_total_plays','post_video_social_actions')
+TRACKED_UPSERT='''INSERT INTO tracked_reels(video_id,page_id,connection_id,caption,published_at,permalink_url,origin)
+    VALUES(?,?,?,?,?,?,?) ON CONFLICT(video_id) DO UPDATE SET connection_id=excluded.connection_id,
+    caption=excluded.caption,published_at=COALESCE(excluded.published_at,tracked_reels.published_at),
+    permalink_url=COALESCE(excluded.permalink_url,tracked_reels.permalink_url)'''
 
 
 def count(value):
@@ -60,56 +64,79 @@ class Analytics:
                   page_id TEXT PRIMARY KEY,after_cursor TEXT,checked_at TEXT,status TEXT);
             ''')
 
-    def register(self,video_id,page_id,connection_id,caption='',published_at=None,permalink=None,origin='manager'):
+    def _registration(self,video_id,page_id,connection_id,caption='',published_at=None,permalink=None,origin='manager'):
         from page_manager.service import url,text
-        if not ID.fullmatch(video_id) or not ID.fullmatch(page_id):return
-        caption=text(caption,2200) or '';permalink=url(permalink,True)
+        if not isinstance(video_id,str) or not isinstance(page_id,str):return None
+        if not ID.fullmatch(video_id) or not ID.fullmatch(page_id):return None
+        caption=text(caption,2200) or ''
+        return (video_id,page_id,connection_id,caption[:2200],published_at,url(permalink,True),origin)
+
+    def register(self,video_id,page_id,connection_id,caption='',published_at=None,permalink=None,origin='manager'):
+        row=self._registration(video_id,page_id,connection_id,caption,published_at,permalink,origin)
+        if row is None:return
+        with self.store.connect() as db:db.execute(TRACKED_UPSERT,row)
+
+    def _register_completed_jobs(self):
+        # One connection and one batched upsert for all completed jobs; job
+        # rows themselves (status, video/request IDs) are never modified.
         with self.store.connect() as db:
-            db.execute('''INSERT INTO tracked_reels(video_id,page_id,connection_id,caption,published_at,permalink_url,origin)
-                VALUES(?,?,?,?,?,?,?) ON CONFLICT(video_id) DO UPDATE SET connection_id=excluded.connection_id,
-                caption=excluded.caption,published_at=COALESCE(excluded.published_at,tracked_reels.published_at),
-                permalink_url=COALESCE(excluded.permalink_url,tracked_reels.permalink_url)''',
-                (video_id,page_id,connection_id,caption[:2200],published_at,permalink,origin))
+            jobs=[dict(row) for row in db.execute("SELECT video_id,page_id,connection_id,caption,published_url,finished_at FROM reel_jobs WHERE status='completed' AND video_id IS NOT NULL")]
+            rows=[]
+            for job in jobs:
+                row=self._registration(job['video_id'],job['page_id'],job['connection_id'],job['caption'],job['finished_at'],job['published_url'])
+                if row:rows.append(row)
+            if rows:db.executemany(TRACKED_UPSERT,rows)
+        return len(rows)
 
     def known(self):
         with self.store.connect() as db:
             return [dict(row) for row in db.execute('''SELECT r.* FROM tracked_reels r JOIN pages p ON p.id=r.page_id
                 WHERE p.removed_at IS NULL ORDER BY r.published_at DESC NULLS LAST,r.video_id''')]
 
+    def _discovery_state(self,page_id):
+        with self.store.connect() as db:
+            return db.execute('SELECT * FROM reel_discovery WHERE page_id=?',(page_id,)).fetchone()
+
+    def _record_discovery(self,page_id,rows,cursor,status):
+        # One connection: discovered Reels and their cursor commit atomically.
+        with self.store.connect() as db:
+            if rows:db.executemany(TRACKED_UPSERT,rows)
+            db.execute('''INSERT INTO reel_discovery(page_id,after_cursor,checked_at,status) VALUES(?,?,?,?)
+                ON CONFLICT(page_id) DO UPDATE SET after_cursor=excluded.after_cursor,checked_at=excluded.checked_at,status=excluded.status''',
+                (page_id,cursor,datetime.now(timezone.utc).isoformat(),status))
+
     async def discover(self,page):
         links=[c for c in page['connections'] if c['status'] in ('working','unchecked')]
         if not links:return
-        cid=links[0]['id'];source=self.manager._edit_source(page['id'],cid)
-        with self.store.connect() as db:
-            previous=db.execute('SELECT * FROM reel_discovery WHERE page_id=?',(page['id'],)).fetchone()
+        cid=links[0]['id'];source=await asyncio.to_thread(self.manager._edit_source,page['id'],cid)
+        previous=await asyncio.to_thread(self._discovery_state,page['id'])
         params={'fields':'id,description,created_time,permalink_url','limit':50}
         if previous and previous['after_cursor']:params['after']=previous['after_cursor']
-        cursor=None;status='complete'
+        cursor=None;status='complete';found=[]
         try:
             async with self.network_slots:
                 async with self.manager.graph_factory() as graph:
                     token,_=await self.manager._edit_token(graph,page['id'],source)
                     result=await graph.get(page['id']+'/videos',token,params)
-            self.manager._edit_source(page['id'],cid,source['token_revision'])
+            await asyncio.to_thread(self.manager._edit_source,page['id'],cid,source['token_revision'])
             for item in result.get('data',[]):
                 if isinstance(item,dict) and isinstance(item.get('id'),str):
-                    self.register(item['id'],page['id'],cid,item.get('description','') or '',item.get('created_time'),item.get('permalink_url'),origin='page_video')
+                    row=self._registration(item['id'],page['id'],cid,item.get('description','') or '',item.get('created_time'),item.get('permalink_url'),origin='page_video')
+                    if row:found.append(row)
             paging=result.get('paging') or {}
             if paging.get('next'):
                 candidate=(paging.get('cursors') or {}).get('after')
                 if isinstance(candidate,str) and len(candidate)<=4096:cursor=candidate;status='partial'
-        except Exception:status='unavailable'
-        with self.store.connect() as db:
-            db.execute('''INSERT INTO reel_discovery(page_id,after_cursor,checked_at,status) VALUES(?,?,?,?)
-                ON CONFLICT(page_id) DO UPDATE SET after_cursor=excluded.after_cursor,checked_at=excluded.checked_at,status=excluded.status''',
-                (page['id'],cursor if status!='unavailable' else previous['after_cursor'] if previous else None,datetime.now(timezone.utc).isoformat(),status))
+        except Exception:status='unavailable';found=[]
+        await asyncio.to_thread(self._record_discovery,page['id'],found,
+            cursor if status!='unavailable' else previous['after_cursor'] if previous else None,status)
 
     async def read(self,target):
         observed=datetime.now(timezone.utc).isoformat();views=comments=shares=None
         try:
             cid=target['connection_id'];pid=target['page_id'];vid=target['video_id']
             async with self.network_slots:
-                source=self.manager._edit_source(pid,cid)
+                source=await asyncio.to_thread(self.manager._edit_source,pid,cid)
                 async with self.manager.graph_factory() as graph:
                     token,_=await self.manager._edit_token(graph,pid,source)
                     owner=await graph.get(vid,token,{'fields':'id,from'})
@@ -126,12 +153,16 @@ class Analytics:
                             payload=await graph.get(vid+'/comments',token,{'limit':0,'summary':'true'})
                             comments=count((payload.get('summary') or {}).get('total_count'))
                         except Exception:pass
-                self.manager._edit_source(pid,cid,source['token_revision'])
+                await asyncio.to_thread(self.manager._edit_source,pid,cid,source['token_revision'])
         except Exception:views=comments=shares=None
         status='available' if all(v is not None for v in (views,comments,shares)) else 'partial' if any(v is not None for v in (views,comments,shares)) else 'unavailable'
+        await asyncio.to_thread(self._record_snapshot,target['video_id'],observed,views,comments,shares,status)
+        return status
+
+    def _record_snapshot(self,video_id,observed,views,comments,shares,status):
         with self.store.connect() as db:
             db.execute('''INSERT INTO reel_metric_snapshots(video_id,observed_at,views,comments,shares,view_metric,api_version,status)
-                VALUES(?,?,?,?,?,?,?,?)''',(target['video_id'],observed,views,comments,shares,'fb_reels_total_plays',self.manager.version,status))
+                VALUES(?,?,?,?,?,?,?,?)''',(video_id,observed,views,comments,shares,'fb_reels_total_plays',self.manager.version,status))
             # Keep 90 days of samples, always preserving the latest for a Reel.
             cutoff=datetime.fromtimestamp(datetime.now(timezone.utc).timestamp()-90*86400,timezone.utc).isoformat()
             db.execute('''DELETE FROM reel_metric_snapshots WHERE observed_at<?
@@ -139,17 +170,14 @@ class Analytics:
                 AND id NOT IN (SELECT MAX(id) FROM reel_metric_snapshots WHERE views IS NOT NULL GROUP BY video_id)
                 AND id NOT IN (SELECT MAX(id) FROM reel_metric_snapshots WHERE comments IS NOT NULL GROUP BY video_id)
                 AND id NOT IN (SELECT MAX(id) FROM reel_metric_snapshots WHERE shares IS NOT NULL GROUP BY video_id)''',(cutoff,))
-        return status
 
     async def refresh(self):
         from page_manager.inputs import PageRefresh
         refreshed_pages=unavailable_pages=0
-        with self.store.connect() as db:
-            jobs=[dict(row) for row in db.execute("SELECT video_id,page_id,connection_id,caption,published_url,finished_at FROM reel_jobs WHERE status='completed' AND video_id IS NOT NULL")]
-        for job in jobs:self.register(job['video_id'],job['page_id'],job['connection_id'],job['caption'],job['finished_at'],job['published_url'])
+        await asyncio.to_thread(self._register_completed_jobs)
         offset=0
         while True:
-            pages=self.manager.pages(limit=100,offset=offset)['items']
+            pages=(await asyncio.to_thread(self.manager.pages,limit=100,offset=offset))['items']
             for page in pages:
                 links=[connection for connection in page['connections'] if connection['status'] in ('working','unchecked')]
                 if links:
@@ -163,7 +191,7 @@ class Analytics:
             if len(pages)<100:break
             offset+=100
         statuses=[]
-        for target in self.known():
+        for target in await asyncio.to_thread(self.known):
             statuses.append(await self.read(target));await asyncio.sleep(0)
         return {'refreshed':sum(s!='unavailable' for s in statuses),'unavailable':sum(s!='available' for s in statuses),
                 'refreshed_pages':refreshed_pages,'unavailable_pages':unavailable_pages}

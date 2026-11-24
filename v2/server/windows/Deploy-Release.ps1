@@ -11,10 +11,14 @@ param(
     [string]$VideoDestination,
     # Operator-only code update: pause new work, wait for network jobs to finish,
     # then preserve every scheduled/unresolved job. Automatic CD never uses it.
-    [switch]$DrainScheduledJobs
+    [switch]$DrainScheduledJobs,
+    # Operator-only: exact old:new hashes for a reviewed code-only PostgreSQL
+    # adapter update. Migrations, provision.py and Store schema stay protected.
+    [ValidatePattern('^[0-9a-f]{64}:[0-9a-f]{64}$')][string]$ReviewedPostgresAdapter
 )
 $ErrorActionPreference = 'Stop'
 if ($VideoDestination -and $DrainScheduledJobs) { throw 'Choose one reviewed deployment mode.' }
+if ($ReviewedPostgresAdapter -and !$DrainScheduledJobs) { throw 'Reviewed adapter updates require the operator drain mode.' }
 Set-StrictMode -Version Latest
 if (![Security.Principal.WindowsIdentity]::GetCurrent().IsSystem -and
     !([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -92,7 +96,8 @@ try {
     if ($DrainScheduledJobs) {
         $stateScript=Join-Path $newApp 'scripts\deployment_state.py'
         $stateFlags=@('--drained')
-        Invoke-Checked $python @('-c', 'import sys;sys.path.insert(0,sys.argv[1]);from scripts.deployment_state import validate_settings;from pathlib import Path;v=validate_settings(*sys.argv[2:5]);assert Path(v.get(''PM_VIDEO_MAINTENANCE_FILE'',''''))==Path(sys.argv[5]),''Configured maintenance marker required''', $newApp, $config, $newApp, $previous, $maintenance)
+        $adapterReview=if($ReviewedPostgresAdapter){$ReviewedPostgresAdapter}else{'-'}
+        Invoke-Checked $python @('-c', 'import sys;sys.path.insert(0,sys.argv[1]);from scripts.deployment_state import validate_settings;from pathlib import Path;v=validate_settings(*sys.argv[2:5],reviewed_postgres_adapter=None if sys.argv[6]==''-'' else sys.argv[6]);assert Path(v.get(''PM_VIDEO_MAINTENANCE_FILE'',''''))==Path(sys.argv[5]),''Configured maintenance marker required''', $newApp, $config, $newApp, $previous, $maintenance, $adapterReview)
         if (Test-Path -LiteralPath $maintenance) { throw 'An earlier maintenance requires inspection.' }
         if (!(Test-Path -LiteralPath $pause)) { [IO.File]::WriteAllText($pause,'Reviewed code deployment'); $pausedHere=$true }
     }
@@ -129,7 +134,7 @@ try {
     Invoke-Checked $newPython @('-m', 'pip', 'install', '--no-index', '--find-links', (Join-Path $release 'wheelhouse'),
         '-r', (Join-Path $newApp 'requirements-lock.txt'))
     Invoke-Checked $newPython @('-m', 'pip', 'check')
-    Invoke-Checked $newPython @('-c', 'import psycopg, cryptography.fernet, argon2, PIL, fastapi, uvicorn')
+    Invoke-Checked $newPython @('-c', 'import psycopg, psycopg_pool, cryptography.fernet, argon2, PIL, fastapi, uvicorn')
     Invoke-Checked $gateway @('--version')
     $switched = $false
     $stopped = $false

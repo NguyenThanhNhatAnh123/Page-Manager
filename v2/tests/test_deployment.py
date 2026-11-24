@@ -109,6 +109,24 @@ def test_preflight_preserves_configuration_and_rejects_schema_changes(tmp_path):
         state.validate_settings(config, new, previous)
 
 
+def test_operator_adapter_review_requires_both_exact_hashes_and_keeps_schema_guard(tmp_path):
+    config,(previous,new)=configuration(tmp_path)
+    adapter=Path('../meta-page-manager/backend/page_manager/postgres.py')
+    (new/adapter).write_text('reviewed pooling code, unchanged schema')
+    pair=hashlib.sha256((previous/adapter).read_bytes()).hexdigest()+':'+hashlib.sha256((new/adapter).read_bytes()).hexdigest()
+    with pytest.raises(ValueError,match='Migration'):
+        state.validate_settings(config,new,previous)
+    for wrong in ('', '0'*64+':'+pair.split(':')[1],pair.split(':')[0]+':'+'0'*64):
+        with pytest.raises(ValueError,match='hashes'):
+            state.validate_settings(config,new,previous,reviewed_postgres_adapter=wrong)
+    state.validate_settings(config,new,previous,reviewed_postgres_adapter=pair)
+    for name in ('migrations/001.sql','scripts/provision.py','../meta-page-manager/backend/page_manager/store.py'):
+        path=new/name;original=path.read_bytes();path.write_text('unreviewed schema mutation')
+        with pytest.raises(ValueError,match='Migration'):
+            state.validate_settings(config,new,previous,reviewed_postgres_adapter=pair)
+        path.write_bytes(original)
+
+
 def test_preflight_rejects_operational_media_inside_code(tmp_path):
     config, (previous, new) = configuration(tmp_path)
     text = config.read_text()

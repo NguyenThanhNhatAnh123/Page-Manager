@@ -32,6 +32,8 @@ Task app và updater chạy SYSTEM trước khi đăng nhập Windows, có chố
 
 Supervisor tự dựng lại worker/gateway sau lỗi process hoặc health, giữ khóa sở hữu xuyên suốt và chờ tăng dần 2–60 giây giữa các lượt lỗi ngắn. Không phụ thuộc hoàn toàn vào retry của Task Scheduler. Dấu `stop.request` ngắt cả lúc chờ; cấu hình sai hoặc cổng thuộc process khác vẫn được từ chối. CI dừng riêng gateway giả rồi xác nhận phục hồi trong cùng một lần chạy task SYSTEM.
 
+Worker dùng pool PostgreSQL mặc định 24 kết nối cho một DSN; các checkout từ thread nền được giới hạn 20 để chừa bốn chỗ cho event loop. Pool nhỏ dưới tám kết nối dành cho kiểm thử không áp dụng dự trữ này. Chờ nền tối đa 10 giây, kết nối mới tối đa 5 giây; checkout trên event loop tối đa 250 ms rồi trả lỗi để lượt quét sau thử lại. Batch đăng ký video completed và các truy vấn đồng bộ chạy qua thread; HTTP/Graph và asyncio lock vẫn ở loop sở hữu. Advisory lease của scheduler dùng kết nối riêng. Thiếu `psycopg_pool` làm startup báo lỗi; bản release phải có wheel đã pin trong wheelhouse để cài offline.
+
 Với cài đặt không tương tác, -DatabaseAdminPasswordFile phải trỏ file trong state riêng được bảo vệ. Không truyền mật khẩu bằng giá trị tham số dòng lệnh hoặc log. Python standalone 3.12 có thể cài riêng ở Program Files với archive và hash được xác minh, độc lập runtime của Codex.
 
 ## Vận hành và phục hồi
@@ -42,6 +44,7 @@ Với cài đặt không tương tác, -DatabaseAdminPasswordFile phải trỏ f
 - App Stop có chủ đích được tôn trọng: updater không bật lại task đã bị operator Stop.
 - CD dừng chờ nếu có job Reel chưa hoàn tất/hủy/thất bại, hoặc thay migration/provision.py/legacy store.py/postgres.py. Những thay đổi schema cần kế hoạch migration riêng.
 - Với cập nhật code cần thực hiện khi còn lịch tương lai/needs_review, operator có thể dùng `Deploy-Release.ps1 -DrainScheduledJobs` cùng bundle/commit/SHA256 đã qua CI. Chế độ này yêu cầu marker bảo trì đã cấu hình ở `PM_VIDEO_MAINTENANCE_FILE`, chặn thao tác ghi mới, đợi mọi lượt gọi Meta đang chạy kết thúc rồi chuyển task. Nó so sánh toàn bộ hàng job (kể cả lịch tương lai), asset, tài khoản/token và bytes cấu hình trước/sau; không đổi trạng thái để ép rảnh. Có thử rollback SYSTEM trong CI. Không dùng chung `-VideoDestination`; updater tự động không truyền cờ này.
+- Riêng thay đổi adapter PostgreSQL chỉ về cách kết nối, operator phải review diff không đổi schema rồi truyền thêm `-ReviewedPostgresAdapter '<SHA256-file-cũ>:<SHA256-file-mới>'` cùng `-DrainScheduledJobs`. Cả hai hash phải khớp chính xác; migration, provision.py và store.py vẫn phải giữ nguyên. Updater tự động không sử dụng ngoại lệ này.
 - Fingerprint giữ UUID/tài khoản/password hash/role/trạng thái, credential MCP (bỏ last_used), ID Page, nguồn token, toàn bộ hàng Reel completed (request/checkpoint/video ID), metadata asset và bytes server.env. Tránh quản trị tài khoản/token trong khoảng chuyển release.
 - Để retry SHA đã rollback sau khi sửa hạ tầng, xem audit, kiểm tra app cũ khỏe rồi bỏ trường failed trong updater.json. Code lỗi nên sửa bằng commit mới.
 - Mất điện/kill giữa lúc chuyển task: kiểm tra stop.request, task hiện tại và previous-task.xml trước khi khởi động lại. Không xóa dữ liệu hoặc restore database để sửa lỗi code.
