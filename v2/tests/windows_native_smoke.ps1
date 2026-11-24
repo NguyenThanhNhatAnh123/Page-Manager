@@ -81,6 +81,17 @@ try {
     $taskCreated = $true
     Start-PageManagerRuntime -StateDirectory $taskState -TaskName $taskName
     Wait-Healthy
+    # A real child crash must recover inside the same SYSTEM task instance,
+    # independently of whether Task Scheduler honors nonzero-exit retries.
+    $sameTaskRun=(Get-ScheduledTaskInfo -TaskPath '\PageManager\' -TaskName $taskName).LastRunTime
+    $ownedGateway=Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort 8020 -State Listen
+    $oldGatewayPid=[int]$ownedGateway.OwningProcess
+    $ownedProcess=Get-CimInstance Win32_Process -Filter ('ProcessId='+$oldGatewayPid)
+    if($ownedProcess.ExecutablePath -ne $gateway){throw 'Refusing to stop an unrelated CI process'}
+    Stop-Process -Id $oldGatewayPid -Force
+    Wait-Healthy
+    $newGatewayPid=[int](Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort 8020 -State Listen).OwningProcess
+    if($newGatewayPid -eq $oldGatewayPid -or (Get-ScheduledTaskInfo -TaskPath '\PageManager\' -TaskName $taskName).LastRunTime -ne $sameTaskRun){throw 'Supervisor failed to recover within the same task instance'}
     $credentials = Join-Path $taskState 'data\initial-users.txt'
     $before = (Get-FileHash -LiteralPath $credentials).Hash
     $count = & (Join-Path $pgBin 'psql.exe') -h 127.0.0.1 -p 55433 -U postgres -d native_startup -tAc 'SELECT COUNT(*) FROM public.pm_users'

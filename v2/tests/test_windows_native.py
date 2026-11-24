@@ -1,5 +1,6 @@
 """Native configuration and process ownership; no real services/credentials/Meta."""
 import importlib.util
+from contextlib import contextmanager
 from pathlib import Path
 import subprocess
 import sys
@@ -10,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.native_runtime import WindowsJob
 from scripts.native_runtime import native_environment
+from scripts import native_runtime as native
 
 spec = importlib.util.spec_from_file_location('native_config', ROOT / 'server/windows/configure.py')
 config = importlib.util.module_from_spec(spec)
@@ -65,6 +67,70 @@ def test_native_children_ignore_inherited_cloud_proxy_and_python_settings(monkey
     assert environment['DATABASE_URL']==values['DATABASE_URL'] and environment['PM_NATIVE_RUNTIME']=='1'
     assert all(key not in environment for key in ('PM_NATIVE_SERVER','PYTHONPATH','HTTPS_PROXY','META_APP_SECRET','PM_TEST_DATABASE_URL'))
     assert native_environment(values,'tests.runtime_server:app')['PM_TEST_DATABASE_URL']==values['DATABASE_URL']
+
+
+@pytest.fixture
+def recovery_clock(tmp_path,monkeypatch):
+    clock=[0.];owned=[False];sleeps=[]
+    @contextmanager
+    def owner(path):
+        assert not owned[0];owned[0]=True
+        try:yield
+        finally:owned[0]=False
+    def sleep(seconds):
+        assert owned[0]
+        assert 0<=seconds<=1
+        sleeps.append(seconds);clock[0]+=seconds
+    monkeypatch.setattr(native,'exclusive_runtime',owner)
+    monkeypatch.setattr(native.time,'monotonic',lambda:clock[0])
+    monkeypatch.setattr(native.time,'sleep',sleep)
+    return clock,owned,sleeps
+
+
+def test_supervisor_restarts_owned_children_without_releasing_ownership(tmp_path,monkeypatch,recovery_clock):
+    clock,owned,_=recovery_clock;calls=[]
+    def once(*args,**kwargs):
+        assert owned[0] and kwargs['lock_owned']
+        calls.append(args)
+        if len(calls)==1:raise native.RuntimeRestartRequired('private-error-detail-not-for-console')
+        return 0
+    monkeypatch.setattr(native,'supervise',once)
+    assert native.recover_runtime(tmp_path/'config',tmp_path/'gateway',tmp_path)==0
+    assert len(calls)==2 and clock[0]==2 and not owned[0]
+    log=(tmp_path/'logs/runtime.log').read_text(encoding='utf-8')
+    assert 'Supervisor retry in 2s' in log and 'private-error-detail' not in log
+
+
+def test_stop_during_recovery_backoff_exits_without_starting_again(tmp_path,monkeypatch,recovery_clock):
+    clock,_,_=recovery_clock;calls=[]
+    def once(*args,**kwargs):calls.append(1);raise native.RuntimeRestartRequired('child exited')
+    def stop(seconds):
+        clock[0]+=seconds;(tmp_path/'stop.request').write_text('operator')
+    monkeypatch.setattr(native,'supervise',once);monkeypatch.setattr(native.time,'sleep',stop)
+    assert native.recover_runtime(tmp_path/'config',tmp_path/'gateway',tmp_path)==0
+    assert calls==[1] and clock[0]<=1
+
+
+def test_recovery_backoff_is_capped_and_resets_after_a_long_healthy_run(tmp_path,monkeypatch,recovery_clock):
+    clock,_,_=recovery_clock;calls=[]
+    def once(*args,**kwargs):
+        calls.append(1)
+        if len(calls)==10:return 0
+        if len(calls)==9:clock[0]+=120
+        raise native.RuntimeRestartRequired('temporary failure')
+    monkeypatch.setattr(native,'supervise',once)
+    assert native.recover_runtime(tmp_path/'config',tmp_path/'gateway',tmp_path)==0
+    lines=(tmp_path/'logs/runtime.log').read_text().splitlines()
+    assert len(lines)==9 and 'in 60s' in lines[7] and 'in 2s' in lines[8]
+
+
+@pytest.mark.parametrize('error',[ValueError('invalid configuration'),RuntimeError('unowned port occupied')])
+def test_recovery_does_not_hide_configuration_or_ownership_failures(tmp_path,monkeypatch,recovery_clock,error):
+    calls=[]
+    def once(*args,**kwargs):calls.append(1);raise error
+    monkeypatch.setattr(native,'supervise',once)
+    with pytest.raises(type(error)):native.recover_runtime(tmp_path/'config',tmp_path/'gateway',tmp_path)
+    assert calls==[1]
 
 
 @pytest.mark.parametrize('existing',['postgres/PG_VERSION','data'])
