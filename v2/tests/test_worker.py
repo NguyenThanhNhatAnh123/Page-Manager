@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 from uuid import uuid4,uuid5,NAMESPACE_DNS
 
 import httpx
@@ -57,6 +58,48 @@ async def test_concurrent_login_sync_is_bounded_and_all_owners_finish(monkeypatc
     finally:
         release.set()
         await asyncio.gather(*tasks,return_exceptions=True)
+
+
+async def test_registry_heartbeat_advances_between_slow_owner_ticks(monkeypatch):
+    from worker import app as module
+    registry=module.Registry();clock=[100.];ages=[];seen=[]
+    class Database:
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def execute(self,query):self.users='SELECT id FROM' in query;return self
+        def fetchall(self):return [{'id':str(index)} for index in range(20)] if self.users else []
+    def get(owner):
+        def tick():clock[0]+=3;seen.append(owner)
+        return SimpleNamespace(scheduler=SimpleNamespace(tick=tick))
+    real_sleep=asyncio.sleep
+    async def sleep(delay):
+        if delay==0:
+            ages.append(clock[0]-registry.last_tick)
+            await real_sleep(0)
+        else:registry.closing=True
+    monkeypatch.setattr(module,'central',Database)
+    monkeypatch.setattr(module,'enqueue_due',lambda *args:0)
+    monkeypatch.setattr(module.time,'monotonic',lambda:clock[0])
+    monkeypatch.setattr(registry,'get',get)
+    monkeypatch.setattr(module.asyncio,'sleep',sleep)
+    await registry.run()
+    assert len(seen)==20 and clock[0]==160 and max(ages)<15
+    assert not registry.error and registry.last_error_type is None
+
+
+async def test_private_health_distinguishes_registry_error_from_stale_progress(monkeypatch):
+    from worker import app as module
+    registry=module.Registry();registry.last_tick=99
+    monkeypatch.setattr(module,'registry',registry)
+    monkeypatch.setattr(module.time,'monotonic',lambda:100.)
+    response=await module.health()
+    assert response.status_code==200 and json.loads(response.body)['tick_age_seconds']==1
+    registry.error=True;registry.last_error_type='OperationalError'
+    response=await module.health();body=json.loads(response.body)
+    assert response.status_code==503 and body['registry_error'] and body['last_error_type']=='OperationalError'
+    registry.error=False;registry.last_error_type=None;registry.last_tick=80
+    response=await module.health();body=json.loads(response.body)
+    assert response.status_code==503 and body['tick_age_seconds']==20 and not body['registry_error']
 
 
 @pytest.fixture(scope='module')

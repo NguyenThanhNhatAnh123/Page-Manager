@@ -30,6 +30,8 @@ Set-Location -LiteralPath 'C:\Program Files\PageManager\v2'
 
 Task app và updater chạy SYSTEM trước khi đăng nhập Windows, có chống chạy chồng. Cloudflared và PostgreSQL chạy Windows service tự khởi động. Kiểm tra sau reboot thực tế cần thực hiện riêng trên server. Chỉ bật chế độ đăng thật sau kiểm tra domain/login/MCP; CD không tự đổi PM_DEV_READ_ONLY.
 
+Supervisor tự dựng lại worker/gateway sau lỗi process hoặc health, giữ khóa sở hữu xuyên suốt và chờ tăng dần 2–60 giây giữa các lượt lỗi ngắn. Không phụ thuộc hoàn toàn vào retry của Task Scheduler. Dấu `stop.request` ngắt cả lúc chờ; cấu hình sai hoặc cổng thuộc process khác vẫn được từ chối. CI dừng riêng gateway giả rồi xác nhận phục hồi trong cùng một lần chạy task SYSTEM.
+
 Với cài đặt không tương tác, -DatabaseAdminPasswordFile phải trỏ file trong state riêng được bảo vệ. Không truyền mật khẩu bằng giá trị tham số dòng lệnh hoặc log. Python standalone 3.12 có thể cài riêng ở Program Files với archive và hash được xác minh, độc lập runtime của Codex.
 
 ## Vận hành và phục hồi

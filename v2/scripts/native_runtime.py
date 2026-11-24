@@ -1,5 +1,5 @@
 """Windows background supervisor: one worker/gateway, private logs, owned child cleanup."""
-from contextlib import contextmanager
+from contextlib import contextmanager,nullcontext
 import ctypes
 import logging
 from logging.handlers import RotatingFileHandler
@@ -16,6 +16,10 @@ from urllib.parse import urlsplit, unquote, quote
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+
+class RuntimeRestartRequired(RuntimeError):
+    """A failed owned child/health cycle can be retried after full cleanup."""
 
 
 class WindowsJob:
@@ -84,11 +88,16 @@ def exclusive_runtime(path):
 
 def ready(url, key=None):
     request = urllib.request.Request(url, headers={'x-pm-internal': key} if key else {})
+    started=time.monotonic()
     try:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(request, timeout=5) as response:
+        # The gateway itself waits up to five seconds for the worker. Allow
+        # that response to arrive before the outer supervisor times out.
+        with opener.open(request, timeout=10) as response:
             return response.status == 200
-    except Exception:
+    except Exception as error:
+        logging.getLogger('pagemanager-native').warning('Health probe failed: route=%s type=%s status=%s elapsed=%.2fs',
+            urlsplit(url).path,type(error).__name__,getattr(error,'code',None),time.monotonic()-started)
         return False
 
 
@@ -124,7 +133,7 @@ def native_environment(values, worker_module='worker.app:app'):
     return environment
 
 
-def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
+def supervise(config_path, gateway, state_dir, worker_module='worker.app:app', *, lock_owned=False):
     from dotenv import dotenv_values
     from scripts.provision import provision
     values = {key: value for key, value in dotenv_values(config_path).items() if value is not None}
@@ -148,7 +157,7 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
             for secret in secret_values:
                 line = line.replace(secret, '[redacted]')
             log.info('%s: %s', name, line.rstrip())
-    with exclusive_runtime(state_dir / 'runtime.lock'):
+    with nullcontext() if lock_owned else exclusive_runtime(state_dir / 'runtime.lock'):
         # Do not attach to an existing app/worker or stop an unrelated process.
         for port in (8020, 8021):
             with socket.socket() as probe:
@@ -173,6 +182,7 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
         job = WindowsJob(); children = []; relays = []
         try:
             for attempt in range(60):
+                if stop_file.exists():return 0
                 if stop_file.exists():
                     return 0
                 try:
@@ -180,7 +190,7 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
                     break
                 except Exception:
                     if attempt == 59:
-                        raise RuntimeError('Database provisioning/readiness failed. Check PostgreSQL service and configuration.') from None
+                        raise RuntimeRestartRequired('Database provisioning/readiness failed. Check PostgreSQL service and configuration.') from None
                     time.sleep(2)
             def start(name, command):
                 child = subprocess.Popen(command, cwd=ROOT, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -193,14 +203,14 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
             worker = start('worker', [sys.executable, '-m', 'uvicorn', worker_module, '--host', '127.0.0.1', '--port', '8021', '--workers', '1', '--no-access-log'])
             for _ in range(90):
                 if worker.poll() is not None:
-                    raise RuntimeError('Worker exited before readiness.')
+                    raise RuntimeRestartRequired('Worker exited before readiness.')
                 if stop_file.exists():
                     return 0
                 if ready('http://127.0.0.1:8021/health', values['PM_INTERNAL_KEY']):
                     break
                 time.sleep(1)
             else:
-                raise RuntimeError('Worker readiness timed out.')
+                raise RuntimeRestartRequired('Worker readiness timed out.')
             start('gateway', [str(gateway)])
             failures = 0; next_health = time.monotonic() + 60
             while all(child.poll() is None for child in children):
@@ -209,10 +219,10 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
                 if time.monotonic() >= next_health:
                     failures = 0 if ready('http://127.0.0.1:8020/healthz') else failures + 1
                     if failures >= 3:
-                        raise RuntimeError('Three consecutive application health checks failed.')
+                        raise RuntimeRestartRequired('Three consecutive application health checks failed.')
                     next_health = time.monotonic() + 20
                 time.sleep(1)
-            raise RuntimeError('A supervised process exited; Task Scheduler will retry.')
+            raise RuntimeRestartRequired('A supervised process exited; the supervisor will retry.')
         except Exception as error:
             detail = str(error)
             for secret in secret_values:
@@ -230,6 +240,37 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app'):
             handler.flush(); handler.close(); log.removeHandler(handler)
 
 
+def recover_runtime(config_path,gateway,state_dir,worker_module='worker.app:app'):
+    """Keep one owner alive across recoverable child/health failures.
+
+    Task Scheduler retry settings remain a second layer. Keep the state lock
+    throughout teardown/backoff, and honor an operator stop within one second.
+    Invalid configuration/permissions are not swallowed as transient failures.
+    """
+    state_dir.mkdir(parents=True,exist_ok=True)
+    stop_file=state_dir/'stop.request';failures=0
+    with exclusive_runtime(state_dir/'runtime.lock'):
+        while not stop_file.exists():
+            started=time.monotonic()
+            try:return supervise(config_path,gateway,state_dir,worker_module,lock_owned=True)
+            except RuntimeRestartRequired as error:
+                if stop_file.exists():return 0
+                if time.monotonic()-started>=60:failures=0
+                failures=min(failures+1,6);delay=min(60,2**failures)
+                # Console handles may have closed during worker cleanup. Write
+                # a bounded, secret-free event directly to the private log.
+                try:
+                    folder=state_dir/'logs';folder.mkdir(exist_ok=True)
+                    with (folder/'runtime.log').open('a',encoding='utf-8') as output:
+                        output.write(f'{time.strftime("%Y-%m-%d %H:%M:%S")} WARNING Supervisor retry in {delay}s ({type(error).__name__}).\n')
+                except OSError:pass
+                deadline=time.monotonic()+delay
+                while time.monotonic()<deadline:
+                    if stop_file.exists():return 0
+                    time.sleep(min(1,max(0,deadline-time.monotonic())))
+    return 0
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
@@ -241,7 +282,7 @@ def main():
     if sys.platform != 'win32':
         parser.error('This supervisor runs on native Windows.')
     try:
-        return supervise(args.config.resolve(), args.gateway.resolve(), args.state_dir.resolve(), args.worker_module)
+        return recover_runtime(args.config.resolve(), args.gateway.resolve(), args.state_dir.resolve(), args.worker_module)
     except Exception as error:
         print(f'Native runtime stopped ({type(error).__name__}). Inspect private logs; security settings were not changed.', file=sys.stderr)
         return 1

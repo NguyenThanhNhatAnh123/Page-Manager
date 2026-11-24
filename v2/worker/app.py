@@ -84,7 +84,7 @@ class Registry:
         self.image_slots=asyncio.Semaphore(2)
         self.sync_slots=asyncio.Semaphore(2)
         self.video_uploads=VideoUploads()
-        self.last_tick=0.;self.closing=False;self.error=False;self.lease=None;self.next_auto_check=0.
+        self.last_tick=0.;self.closing=False;self.error=False;self.last_error_type=None;self.lease=None;self.next_auto_check=0.
     def get(self,owner):
         if owner not in self.workspaces:self.workspaces[owner]=Workspace(owner,self)
         return self.workspaces[owner]
@@ -127,13 +127,15 @@ class Registry:
         while not self.closing:
             if self.lease is not None:
                 try:self.lease.execute('SELECT 1')
-                except Exception:
+                except Exception as error:
                     self.error=True
+                    self.last_error_type=type(error).__name__
+                    logging.getLogger(__name__).warning('Scheduler lease probe failed (%s)',self.last_error_type)
                     await self.shutdown()
                     return
             try:
                 if maintenance():
-                    self.last_tick=time.monotonic();self.error=False
+                    self.last_tick=time.monotonic();self.error=False;self.last_error_type=None
                     await asyncio.sleep(2);continue
                 with central() as db:
                     users=db.execute('SELECT id FROM public.pm_users WHERE active=TRUE ORDER BY id').fetchall()
@@ -150,6 +152,9 @@ class Registry:
                     try:
                         workspace=self.get(user['id']);workspace.scheduler.tick();ready[user['id']]=workspace
                     except Exception as error:logging.getLogger(__name__).warning('Workspace %s tick failed (%s)',user['id'],type(error).__name__)
+                    # A full pass over twenty backlogged owners may exceed the
+                    # readiness interval while still making steady progress.
+                    self.last_tick=time.monotonic()
                     await asyncio.sleep(0)
                 if time.monotonic()>=self.next_auto_check:
                     self.next_auto_check=time.monotonic()+60
@@ -160,8 +165,10 @@ class Registry:
                     if task is None or task.done():
                         if task is not None and not task.cancelled():task.exception()
                         self.sync_tasks[owner]=asyncio.create_task(self.sync(ready[owner],request['requested_at']))
-                self.last_tick=time.monotonic();self.error=False
-            except Exception:self.error=True
+                self.last_tick=time.monotonic();self.error=False;self.last_error_type=None
+            except Exception as error:
+                self.error=True;self.last_error_type=type(error).__name__
+                logging.getLogger(__name__).warning('Scheduler registry iteration failed (%s)',self.last_error_type)
             await asyncio.sleep(2)
     async def shutdown(self):
         self.closing=True
@@ -244,8 +251,10 @@ def ws(request):return request.state.workspace
 
 @app.get('/health')
 async def health():
-    healthy=not registry.error and time.monotonic()-registry.last_tick<15
-    return JSONResponse({'ok':healthy,'workspaces':len(registry.workspaces)},status_code=200 if healthy else 503)
+    age=max(0,time.monotonic()-registry.last_tick)
+    healthy=not registry.error and age<15
+    return JSONResponse({'ok':healthy,'workspaces':len(registry.workspaces),'registry_error':registry.error,
+                         'tick_age_seconds':round(age,3),'last_error_type':registry.last_error_type},status_code=200 if healthy else 503)
 
 
 @app.get('/api/connections')
