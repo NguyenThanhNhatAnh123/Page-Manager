@@ -194,6 +194,38 @@ for state in ('scheduled','needs_review'):
     & $python $stateScript --config $config
     if ($LASTEXITCODE -eq 0) { throw 'Automatic preflight accepted unresolved jobs.' }
     $healthyRelease=(Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $taskName).Actions[0].WorkingDirectory
+    # A quiesce subprocess may stop/disable the task successfully, then report
+    # an error before Deploy-Release sets its old $stopped flag. The previous
+    # task must be enabled and restarted even though no switch happened yet.
+    $stoppedFailure=Join-Path $root 'stopped-failure.zip'
+    $injectStopped=@'
+import hashlib,json,sys,zipfile
+with zipfile.ZipFile(sys.argv[1]) as source:
+    files={name:source.read(name) for name in source.namelist()}
+manifest=json.loads(files.pop('manifest.json'))
+name='v2/scripts/video_storage.py';code=files[name].replace(b'\r\n',b'\n')
+needle=b'                    return\n'
+assert code.count(needle)==1
+files[name]=code.replace(needle,b'                    raise RuntimeError("CI injected completed-stop failure")\n')
+manifest['files'][name]={'bytes':len(files[name]),'sha256':hashlib.sha256(files[name]).hexdigest()}
+with zipfile.ZipFile(sys.argv[2],'w',zipfile.ZIP_DEFLATED) as target:
+    for name,data in files.items():target.writestr(name,data)
+    target.writestr('manifest.json',json.dumps(manifest))
+'@
+    Checked $python @('-c',$injectStopped,$bundle,$stoppedFailure)
+    $stoppedHash=(Get-FileHash -LiteralPath $stoppedFailure -Algorithm SHA256).Hash.ToLowerInvariant()
+    $rejected=$false
+    try {
+        Deploy-Checked $drainDeploy @('-Bundle',$stoppedFailure,'-ExpectedCommit',$env:GITHUB_SHA,'-ExpectedSha256',$stoppedHash,
+            '-StateDirectory',$state,'-TaskName',$taskName,'-DrainScheduledJobs')
+    }catch{$rejected=$true}
+    if(!$rejected){throw 'Injected post-stop failure was accepted'}
+    Wait-Healthy
+    $recoveredTask=Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $taskName
+    if($recoveredTask.State -ne 'Running' -or $recoveredTask.Actions[0].WorkingDirectory -ne $healthyRelease){throw 'Post-stop failure left the previous task disabled or unrestored'}
+    foreach($marker in @('stop.request','video-storage.maintenance','updates.paused')) {
+        if(Test-Path -LiteralPath (Join-Path $state $marker)){throw 'Post-stop rollback left an operator marker'}
+    }
     $rejected=$false
     try {
         Deploy-Checked $drainDeploy @('-Bundle',$broken,'-ExpectedCommit',$env:GITHUB_SHA,'-ExpectedSha256',$brokenHash,

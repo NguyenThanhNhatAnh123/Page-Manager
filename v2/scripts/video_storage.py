@@ -121,7 +121,7 @@ def cleanup_source(plan):
     return count
 
 
-def quiesce(dsn,stop_script,previous,state,task,*,timeout=3600):
+def quiesce(dsn,stop_script,previous,state,task,*,timeout=3600,journal=None):
     """No network operation may be active when stopping. Lock out new claims.
 
     ACCESS EXCLUSIVE blocks scheduler reads/claims until the native runtime is
@@ -133,11 +133,23 @@ def quiesce(dsn,stop_script,previous,state,task,*,timeout=3600):
         try:
             with psycopg.connect(dsn,row_factory=dict_row,prepare_threshold=None) as db:
                 users=owners(db)
+                # The recovering supervisor may be provisioning public tables.
+                # Do not keep pm_users' read lock while waiting for it to exit.
+                db.commit()
                 for owner in users:db.execute(sql.SQL('LOCK TABLE {}.reel_jobs IN ACCESS EXCLUSIVE MODE NOWAIT').format(namespace(owner)))
                 active=sum(db.execute(sql.SQL('SELECT count(*) n FROM {}.reel_jobs WHERE status=ANY(%s)').format(namespace(owner)),(list(ACTIVE),)).fetchone()['n'] for owner in users)
                 if not active:
+                    if journal is not None:
+                        journal=Path(journal)
+                        progress=json.loads(journal.read_text(encoding='utf-8')) if journal.exists() else {'format':1,'phase':'quiescing'}
+                        progress.update(runtime_stop_requested=True,runtime_stop_completed=False,
+                            runtime_app_root=str(previous),runtime_task=task,runtime_state_directory=str(state))
+                        journal.write_text(json.dumps(progress),encoding='utf-8')
                     subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','RemoteSigned','-File',str(stop_script),
                                     '-AppRoot',str(previous),'-StateDirectory',str(state),'-TaskName',task],check=True)
+                    if journal is not None:
+                        progress['runtime_stop_completed']=True
+                        journal.write_text(json.dumps(progress),encoding='utf-8')
                     return
         except psycopg.errors.LockNotAvailable:pass
         print('Waiting for current Reel operations to finish before migration.',flush=True)
@@ -162,7 +174,7 @@ def main():
     parser.add_argument('--task',default='PageManager-v2')
     args=parser.parse_args();values=dict(dotenv_values(args.config))
     if args.action=='quiesce':
-        quiesce(values['DATABASE_URL'],ROOT/'server/windows/Stop-ForVideoMove.ps1',args.previous,args.state,args.task);return
+        quiesce(values['DATABASE_URL'],ROOT/'server/windows/Stop-ForVideoMove.ps1',args.previous,args.state,args.task,journal=args.journal);return
     if args.action in ('stage','switch'):
         with psycopg.connect(values['DATABASE_URL'],row_factory=dict_row,prepare_threshold=None) as db:
             db.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')

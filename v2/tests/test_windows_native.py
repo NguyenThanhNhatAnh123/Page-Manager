@@ -111,6 +111,30 @@ def test_stop_during_recovery_backoff_exits_without_starting_again(tmp_path,monk
     assert calls==[1] and clock[0]<=1
 
 
+def test_stop_arriving_during_provision_does_not_spawn_new_children(tmp_path,monkeypatch,recovery_clock):
+    from types import SimpleNamespace
+    from scripts import provision as provision_module
+    state=tmp_path/'state';state.mkdir()
+    config_path=tmp_path/'server.env'
+    config_path.write_text('DATABASE_URL=postgresql://fixture@127.0.0.1/fixture\nPM_INTERNAL_KEY=fixture\n'
+        'PM_ENCRYPTION_KEY=fixture\nPM_LISTEN=127.0.0.1:8020\nPM_WORKER_URL=http://127.0.0.1:8021\n'
+        f'PM_DATA_DIR={tmp_path.as_posix()}\n')
+    class Probe:
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def bind(self,address):assert address[0]=='127.0.0.1'
+    closed=[]
+    monkeypatch.setattr(native.socket,'socket',lambda *args:Probe())
+    monkeypatch.setattr(native.ctypes,'WinDLL',lambda *args,**kwargs:SimpleNamespace(GetConsoleWindow=lambda:1))
+    monkeypatch.setattr(native,'WindowsJob',lambda:SimpleNamespace(close=lambda:closed.append(True)))
+    monkeypatch.setattr(native.os,'environ',{})
+    monkeypatch.setattr(provision_module,'provision',lambda *args:(state/'stop.request').write_text('stop'))
+    def forbidden(*args,**kwargs):raise AssertionError('A stop received during provision must not start a worker')
+    monkeypatch.setattr(native.subprocess,'Popen',forbidden)
+    assert native.supervise(config_path,tmp_path/'gateway.exe',state)==0
+    assert closed==[True]
+
+
 def test_recovery_backoff_is_capped_and_resets_after_a_long_healthy_run(tmp_path,monkeypatch,recovery_clock):
     clock,_,_=recovery_clock;calls=[]
     def once(*args,**kwargs):
