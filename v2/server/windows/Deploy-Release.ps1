@@ -93,6 +93,8 @@ try {
     $pausedHere = $false
     Invoke-Checked $python @((Join-Path $previous 'scripts\release_bundle.py'), '--bundle', $Bundle,
         '--commit', $ExpectedCommit, '--sha256', $ExpectedSha256, '--destination', $release)
+    # Use the verified release's stop policy even when upgrading an older task.
+    Import-Module (Join-Path $newApp 'server\windows\Native-Tasks.psm1') -Force
     if ($DrainScheduledJobs) {
         $stateScript=Join-Path $newApp 'scripts\deployment_state.py'
         $stateFlags=@('--drained')
@@ -185,6 +187,23 @@ try {
         Write-Host "Deployed $ExpectedCommit. Previous code and private configuration retained."
     } catch {
         $failure = $_
+        if ($DrainScheduledJobs -and !$stopped -and (Test-Path -LiteralPath $videoJournal)) {
+            $progress=Get-Content -LiteralPath $videoJournal -Raw|ConvertFrom-Json
+            if ($progress.PSObject.Properties['runtime_stop_requested'] -and $progress.runtime_stop_requested -and
+                $progress.runtime_app_root -eq $previous -and $progress.runtime_task -eq $TaskName -and
+                $progress.runtime_state_directory -eq $StateDirectory) {
+                $currentTask=Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $TaskName
+                if ($currentTask.Description -ne "PageManager native v2: $previous" -or $currentTask.Actions[0].WorkingDirectory -ne $previous) { throw 'Task ownership changed during interrupted stop.' }
+                if ([string]$currentTask.State -eq 'Disabled' -or (Test-Path -LiteralPath (Join-Path $StateDirectory 'stop.request'))) {
+                    # A quiesce subprocess can fail after it disabled/stopped
+                    # the old runtime. Wait; never force-kill or abandon it.
+                    $stopDeadline=[DateTime]::UtcNow.AddSeconds(180)
+                    while ((Get-PageManagerInstances -TaskName $TaskName) -gt 0 -and [DateTime]::UtcNow -lt $stopDeadline) { Start-Sleep -Seconds 1 }
+                    if ((Get-PageManagerInstances -TaskName $TaskName) -gt 0) { throw 'Interrupted runtime stop is still in progress; no forced termination performed.' }
+                    $stopped=$true
+                }
+            }
+        }
         if ($stopped -and !$committed) {
             if ($switched) { Stop-PageManagerRuntime -StateDirectory $StateDirectory -TaskName $TaskName }
             if ($VideoDestination) {

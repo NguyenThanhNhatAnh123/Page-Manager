@@ -182,7 +182,6 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app', *
         job = WindowsJob(); children = []; relays = []
         try:
             for attempt in range(60):
-                if stop_file.exists():return 0
                 if stop_file.exists():
                     return 0
                 try:
@@ -200,6 +199,7 @@ def supervise(config_path, gateway, state_dir, worker_module='worker.app:app', *
                 thread = threading.Thread(target=relay, args=(name, child.stdout), daemon=True)
                 relays.append(thread); thread.start()
                 return child
+            if stop_file.exists():return 0
             worker = start('worker', [sys.executable, '-m', 'uvicorn', worker_module, '--host', '127.0.0.1', '--port', '8021', '--workers', '1', '--no-access-log'])
             for _ in range(90):
                 if worker.poll() is not None:

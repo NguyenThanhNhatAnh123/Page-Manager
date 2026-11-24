@@ -125,9 +125,29 @@ def test_quiesce_holds_database_locks_until_stop_is_confirmed(runtime,tmp_path,m
     def stop(arguments,**kwargs):
         assert arguments[0]=='powershell.exe' and '-TaskName' in arguments
         with database() as db:
+            # A supervisor leaving backoff may run provision's public DDL.
+            # Quiesce must release its earlier pm_users read lock first.
+            db.execute('LOCK TABLE public.pm_users IN ACCESS EXCLUSIVE MODE NOWAIT')
             with pytest.raises(psycopg.errors.LockNotAvailable):
                 db.execute('LOCK TABLE "'+ws.namespace+'".reel_jobs IN ACCESS EXCLUSIVE MODE NOWAIT')
         stopped.append(True)
     monkeypatch.setattr('scripts.video_storage.subprocess.run',stop)
     quiesce(os.environ['PM_TEST_DATABASE_URL'],'stop.ps1',tmp_path,tmp_path,'Fixture',timeout=5)
     assert stopped==[True] and ws.manager.store.reel_job(job['id'])['status']=='scheduled'
+
+
+def test_quiesce_records_stop_attempt_before_subprocess_failure(runtime,tmp_path,monkeypatch):
+    import json
+    import subprocess
+    ws,job,target=migration_fixture(runtime,tmp_path)
+    before=ws.manager.store.reel_job(job['id'])
+    journal=tmp_path/'quiesce.json'
+    def fail(arguments,**kwargs):
+        progress=json.loads(journal.read_text())
+        assert progress['runtime_stop_requested'] and not progress['runtime_stop_completed']
+        assert progress['runtime_app_root']==str(tmp_path) and progress['runtime_task']=='Fixture'
+        raise subprocess.CalledProcessError(1,arguments)
+    monkeypatch.setattr('scripts.video_storage.subprocess.run',fail)
+    with pytest.raises(subprocess.CalledProcessError):
+        quiesce(os.environ['PM_TEST_DATABASE_URL'],'stop.ps1',tmp_path,tmp_path,'Fixture',timeout=5,journal=journal)
+    assert ws.manager.store.reel_job(job['id'])==before

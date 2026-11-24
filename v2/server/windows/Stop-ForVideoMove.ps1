@@ -4,5 +4,5 @@ param([Parameter(Mandatory)][string]$AppRoot,[Parameter(Mandatory)][string]$Stat
 $ErrorActionPreference='Stop'
 $task=Get-ScheduledTask -TaskPath '\PageManager\' -TaskName $TaskName
 if ($task.Description -ne "PageManager native v2: $AppRoot" -or $task.Actions[0].WorkingDirectory -ne $AppRoot) { throw 'Unexpected native task ownership.' }
-Import-Module (Join-Path $AppRoot 'server\windows\Native-Tasks.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Native-Tasks.psm1') -Force
 Stop-PageManagerRuntime -StateDirectory $StateDirectory -TaskName $TaskName

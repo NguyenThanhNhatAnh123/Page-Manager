@@ -40,12 +40,13 @@ function Start-PageManagerRuntime {
 }
 
 function Stop-PageManagerRuntime {
-    param([string]$StateDirectory,[ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$TaskName='PageManager-v2')
+    param([string]$StateDirectory,[ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$TaskName='PageManager-v2',
+          [ValidateRange(1,600)][int]$TimeoutSeconds=180)
     Disable-ScheduledTask -TaskPath '\PageManager\' -TaskName $TaskName | Out-Null
     [IO.File]::WriteAllText((Join-Path $StateDirectory 'stop.request'),'stop')
-    $deadline = [DateTime]::UtcNow.AddSeconds(90)
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ((Get-PageManagerInstances -TaskName $TaskName) -gt 0 -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Seconds 1 }
-    if ((Get-PageManagerInstances -TaskName $TaskName) -gt 0) { throw 'Native runtime is still stopping; inspect logs before forcing termination.' }
+    if ((Get-PageManagerInstances -TaskName $TaskName) -gt 0) { throw 'Native runtime is still stopping; inspect logs. No process was forcibly terminated.' }
 }
 
 Export-ModuleMember -Function Register-PageManagerRuntime,Get-PageManagerInstances,Start-PageManagerRuntime,Stop-PageManagerRuntime
